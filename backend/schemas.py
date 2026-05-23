@@ -60,6 +60,12 @@ class PointsTransactionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class PaginatedPointsHistory(BaseModel):
+    transactions: List[PointsTransactionResponse]
+    total: int
+    page: int
+    pages: int
+
 
 # --- User Schemas ---
 class UserBase(BaseModel):

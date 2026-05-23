@@ -81,7 +81,7 @@ export const Home = () => {
       const [statsData, couponsData, pointsData, offersData] = await Promise.all([
         getStats(),
         getCoupons(),
-        getPointsHistory(5),
+        getPointsHistory(0, 5),
         getOffers()
       ]);
       setStats(statsData);
@@ -400,8 +400,11 @@ export const Home = () => {
               </div>
             )}
             <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
-              <Link to="/profile" className="text-xs font-bold text-[#782B90] hover:underline">
-                View all activity
+              <Link 
+                to="/profile?tab=history"
+                className="text-sm font-medium"
+                style={{ color: '#782B90' }}>
+                View all activity →
               </Link>
             </div>
           </div>

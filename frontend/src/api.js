@@ -73,8 +73,8 @@ export const getCoupons = async () => {
   return response.data;
 };
 
-export const getPointsHistory = async (limit = 10) => {
-  const response = await api.get("/api/users/me/points-history", { params: { limit } });
+export const getPointsHistory = async (skip = 0, limit = 10) => {
+  const response = await api.get("/api/users/me/points-history", { params: { skip, limit } });
   return response.data;
 };
 

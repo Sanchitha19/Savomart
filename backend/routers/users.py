@@ -4,7 +4,7 @@ from typing import List
 from datetime import datetime
 from database import get_db
 from models import User, Coupon, PointsTransaction
-from schemas import UserResponse, CouponResponse, PointsTransactionResponse, UserProfileUpdate
+from schemas import UserResponse, CouponResponse, PointsTransactionResponse, UserProfileUpdate, PaginatedPointsHistory
 from auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -20,11 +20,20 @@ def read_user_coupons(current_user: User = Depends(get_current_user), db: Sessio
     coupons = db.query(Coupon).filter(Coupon.user_id == current_user.id).order_by(Coupon.is_used.asc(), Coupon.expiry_date.asc()).all()
     return coupons
 
-@router.get("/me/points-history", response_model=List[PointsTransactionResponse])
-def read_user_points_history(limit: int = 10, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.get("/me/points-history", response_model=PaginatedPointsHistory)
+def read_user_points_history(limit: int = 10, skip: int = 0, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Fetch points earned/redeemed transaction history for the authenticated user."""
-    transactions = db.query(PointsTransaction).filter(PointsTransaction.user_id == current_user.id).order_by(PointsTransaction.created_at.desc()).limit(limit).all()
-    return transactions
+    query = db.query(PointsTransaction).filter(PointsTransaction.user_id == current_user.id).order_by(PointsTransaction.created_at.desc())
+    total = query.count()
+    transactions = query.offset(skip).limit(limit).all()
+    pages = (total + limit - 1) // limit if limit > 0 else 1
+    page = (skip // limit) + 1 if limit > 0 else 1
+    return {
+        "transactions": transactions,
+        "total": total,
+        "page": page,
+        "pages": pages
+    }
 
 @router.get("/me/stats")
 def read_user_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -32,15 +41,18 @@ def read_user_stats(current_user: User = Depends(get_current_user), db: Session 
     points_balance = current_user.points_balance
     tier = current_user.tier
     
-    if tier == "Silver":
+    if points_balance <= 2000:
+        tier = "Silver"
         next_tier = "Gold"
-        points_to_next = max(0, 1000 - points_balance)
-        tier_progress = (points_balance / 1000) * 100 if points_balance < 1000 else 100
-    elif tier == "Gold":
+        points_to_next = max(0, 2001 - points_balance)
+        tier_progress = (points_balance / 2000) * 100
+    elif points_balance <= 5000:
+        tier = "Gold"
         next_tier = "Platinum"
-        points_to_next = max(0, 5000 - points_balance)
-        tier_progress = ((points_balance - 1000) / 4000) * 100 if points_balance < 5000 else 100
+        points_to_next = max(0, 5001 - points_balance)
+        tier_progress = ((points_balance - 2001) / 2999) * 100
     else:
+        tier = "Platinum"
         next_tier = "None"
         points_to_next = 0
         tier_progress = 100

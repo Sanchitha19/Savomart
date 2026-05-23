@@ -12,6 +12,7 @@ import Stores from "./pages/Stores";
 import Support from "./pages/Support";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useLocation } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Page transition wrapper
 const AnimatedPage = ({ children }) => {
@@ -92,7 +93,9 @@ function App() {
                 path="/" 
                 element={
                   <ProtectedRoute>
-                    <AnimatedPage><Home /></AnimatedPage>
+                    <ErrorBoundary>
+                      <AnimatedPage><Home /></AnimatedPage>
+                    </ErrorBoundary>
                   </ProtectedRoute>
                 } 
               />
@@ -100,7 +103,9 @@ function App() {
                 path="/profile" 
                 element={
                   <ProtectedRoute>
-                    <AnimatedPage><Profile /></AnimatedPage>
+                    <ErrorBoundary>
+                      <AnimatedPage><Profile /></AnimatedPage>
+                    </ErrorBoundary>
                   </ProtectedRoute>
                 } 
               />
@@ -108,7 +113,9 @@ function App() {
                 path="/offers" 
                 element={
                   <ProtectedRoute>
-                    <AnimatedPage><Offers /></AnimatedPage>
+                    <ErrorBoundary>
+                      <AnimatedPage><Offers /></AnimatedPage>
+                    </ErrorBoundary>
                   </ProtectedRoute>
                 } 
               />
@@ -116,7 +123,9 @@ function App() {
                 path="/stores" 
                 element={
                   <ProtectedRoute>
-                    <AnimatedPage><Stores /></AnimatedPage>
+                    <ErrorBoundary>
+                      <AnimatedPage><Stores /></AnimatedPage>
+                    </ErrorBoundary>
                   </ProtectedRoute>
                 } 
               />
@@ -124,7 +133,9 @@ function App() {
                 path="/support" 
                 element={
                   <ProtectedRoute>
-                    <AnimatedPage><Support /></AnimatedPage>
+                    <ErrorBoundary>
+                      <AnimatedPage><Support /></AnimatedPage>
+                    </ErrorBoundary>
                   </ProtectedRoute>
                 } 
               />
