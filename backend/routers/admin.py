@@ -334,16 +334,14 @@ def download_excel(db: Session = Depends(get_db)):
         ws = wb.active
         ws.title = "Support Tickets"
         
-        # Style header
-        headers = [
-            "Ticket ID", "Name", "Phone", "Email",
-            "Category", "Description", "Status",
-            "Created At", "Resolved At", "Resolution Note",
-            "Resolved By", "Customer Feedback", "Feedback Date",
-            "Reopen Reason", "Times Reopened"
-        ]
-        ]
-        ws.append(headers)
+headers = [
+    "Ticket ID", "Name", "Phone", "Email",
+    "Category", "Description", "Status",
+    "Created At", "Resolved At", "Resolution Note",
+    "Resolved By", "Customer Feedback", "Feedback Date",
+    "Reopen Reason", "Times Reopened"
+]
+ws.append(headers)
         
         # Style header row
         from openpyxl.styles import (
