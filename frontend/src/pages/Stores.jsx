@@ -108,6 +108,7 @@ export const Stores = () => {
   const [viewMode, setViewMode] = useState("map"); // "map" | "list"
   const [searchQuery, setSearchQuery] = useState("");
   const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [locationError, setLocationError] = useState(null);
 
   // Load stores on mount (no location yet)
   useEffect(() => {
@@ -125,69 +126,64 @@ export const Stores = () => {
     load();
   }, []);
 
-  const [locationError, setLocationError] = useState(null);
-
   // Request geolocation, reload stores with distances, fetch top-3 nearest
   const handleRequestLocation = () => {
     if (!navigator.geolocation) {
-      setLocationError('Your browser does not support geolocation. Showing all stores.');
-      return;
+      setLocationError('Your browser does not support geolocation. Showing all stores.')
+      return
     }
 
-    setIsLocating(true);
-    setLocationError(null);
+    setIsLocating(true)
+    setLocationError(null)
+    
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation({ lat: latitude, lng: longitude });
-        setLocationError(null);
+        const { latitude, longitude } = position.coords
+        setUserLocation({ lat: latitude, lng: longitude })
+        setLocationError(null)
 
         try {
-          // Re-fetch all stores with distance pre-calculated by the backend
           const [allStores, topNearest] = await Promise.all([
             getStores(latitude, longitude),
             getNearestStores(latitude, longitude),
-          ]);
+          ])
 
-          setStores(allStores);
-          setNearestStores(topNearest);
+          setStores(allStores)
+          setNearestStores(topNearest)
 
-          // Fly to the nearest store
           if (topNearest.length > 0) {
-            setMapCenter([topNearest[0].latitude, topNearest[0].longitude]);
-            setMapZoom(13);
-            setActiveStoreId(topNearest[0].id);
-            toast.success(`Nearest store: ${topNearest[0].name}`);
+            setMapCenter([topNearest[0].latitude, topNearest[0].longitude])
+            setMapZoom(13)
+            setActiveStoreId(topNearest[0].id)
           }
         } catch (err) {
-          console.error("Failed to fetch stores with location:", err);
-          toast.error("Failed to locate closest store.");
+          console.error("Failed to fetch nearest stores", err)
         } finally {
-          setIsLocating(false);
+          setIsLocating(false)
         }
       },
       (error) => {
-        setIsLocating(false);
+        setIsLocating(false)
         if (error.code === error.PERMISSION_DENIED) {
           setLocationError(
             'Location access was denied. To find your nearest store:\n' +
             '1. Click the lock/info icon in your browser address bar\n' +
             '2. Set Location to "Allow"\n' +
             '3. Click the "Retry" button below'
-          );
+          )
         } else if (error.code === error.POSITION_UNAVAILABLE) {
           setLocationError(
             'Could not detect your location. Please check your device settings and try again.'
-          );
+          )
         } else {
           setLocationError(
             'Location request timed out. Please try again.'
-          );
+          )
         }
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  };
+    )
+  }
 
   const handleSelectStore = (store) => {
     setActiveStoreId(store.id);
@@ -272,6 +268,27 @@ export const Stores = () => {
         </div>
       </div>
 
+      {locationError && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-700 flex items-center gap-1.5 mb-1">
+                📍 Location Access Needed
+              </p>
+              <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">
+                {locationError}
+              </p>
+            </div>
+            <button 
+              onClick={handleRequestLocation}
+              disabled={isLocating}
+              className="shrink-0 bg-[#782B90] hover:bg-[#4A1A5C] text-white text-xs font-bold px-4 py-2 rounded-xl transition-all disabled:opacity-50">
+              {isLocating ? 'Locating...' : '🔄 Retry'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Nearest Store Banner ───────────────────────────────────── */}
       {nearestStores.length > 0 && (
         <div className="bg-gradient-to-r from-savomart-purple-light/60 to-purple-50 border border-savomart-purple/15 rounded-2xl p-4">
@@ -297,29 +314,6 @@ export const Stores = () => {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Location Error Banner ──────────────────────────────────── */}
-      {locationError && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-amber-700 flex items-center gap-1.5 mb-1">
-                📍 Location Access Needed
-              </p>
-              <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">
-                {locationError}
-              </p>
-            </div>
-            <button
-              onClick={handleRequestLocation}
-              disabled={isLocating}
-              className="shrink-0 bg-savomart-purple hover:bg-savomart-purple-dark text-white text-xs font-bold px-4 py-2 rounded-xl transition-all disabled:opacity-50"
-            >
-              {isLocating ? 'Locating…' : '🔄 Retry'}
-            </button>
           </div>
         </div>
       )}

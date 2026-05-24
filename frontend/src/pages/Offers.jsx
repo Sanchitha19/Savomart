@@ -177,88 +177,87 @@ export const Offers = () => {
 
       {/* Offer Detail Modal */}
       {selectedOffer && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4"
-          onClick={() => setSelectedOffer(null)}
-        >
-          <div
-            className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden animate-slide-up sm:animate-scale-up shadow-2xl relative max-h-[90vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            
-            {/* Colored Banner Header */}
-            <div className={`relative h-40 bg-gradient-to-r ${getCategoryStyles(selectedOffer.category).bg} flex items-center justify-center p-6 text-white`}>
-              <button 
-                onClick={() => setSelectedOffer(null)}
-                className="absolute top-4 right-4 bg-black/20 hover:bg-black/40 p-2 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5 text-white" />
-              </button>
-              
-              <div className="absolute -bottom-6 right-6 w-16 h-16 bg-[#FFF200] rounded-full border-4 border-white shadow-lg flex items-center justify-center rotate-12">
-                <span className="text-[#782B90] font-extrabold text-sm text-center leading-tight">
-                  {selectedOffer.discount_type === 'percentage' ? `${Math.round(selectedOffer.discount_value)}%\nOFF` : `₹${Math.round(selectedOffer.discount_value)}\nOFF`}
-                </span>
-              </div>
-              
-              {selectedOffer.image_url ? (
-                <img src={selectedOffer.image_url} alt={selectedOffer.title} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay" />
-              ) : (
-                <Zap className="w-16 h-16 opacity-30" />
-              )}
-            </div>
-            
-            {/* Content Body */}
-            <div className="p-6 overflow-y-auto pb-24 sm:pb-6">
-              <div className="inline-block px-2 py-1 bg-purple-50 text-[#782B90] text-xs font-bold rounded mb-3 uppercase tracking-wider">
-                {selectedOffer.category}
-              </div>
-              <h2 className="text-2xl font-extrabold text-slate-800 leading-tight mb-2">
-                {selectedOffer.title}
+        <div 
+          className="fixed inset-0 z-50 flex items-end 
+                     justify-center"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setSelectedOffer(null)}>
+          
+          <div 
+            className="bg-white w-full max-w-lg rounded-t-3xl
+                       p-6 max-h-screen overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Close button */}
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold"
+                  style={{ color: '#782B90' }}>
+                Offer Details
               </h2>
-              <p className="text-slate-600 text-sm mb-6 leading-relaxed">
-                {selectedOffer.description}
-              </p>
-
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center space-x-3 text-sm font-semibold text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <Clock className="w-5 h-5 text-amber-500" />
-                  <span>Valid until {format(new Date(selectedOffer.valid_until), "MMM dd, yyyy")}</span>
-                </div>
-                <div className="flex items-center space-x-3 text-sm font-semibold text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <MapPin className="w-5 h-5 text-emerald-500" />
-                  <span>{selectedOffer.store_name || "Available at all locations"}</span>
-                </div>
-                {selectedOffer.min_purchase > 0 && (
-                  <div className="flex items-center space-x-3 text-sm font-semibold text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <ShoppingBag className="w-5 h-5 text-[#782B90]" />
-                    <span>Min. purchase ₹{selectedOffer.min_purchase} required</span>
-                  </div>
-                )}
-              </div>
-
-              {/* QR Code Placeholder */}
-              <div className="border border-dashed border-slate-300 rounded-2xl p-6 flex flex-col items-center justify-center bg-slate-50">
-                <div className="w-32 h-32 bg-white border border-slate-200 shadow-sm rounded-xl flex items-center justify-center p-2 mb-3">
-                  <div className="w-full h-full bg-slate-900 rounded opacity-10" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.1) 10px, rgba(0,0,0,0.1) 20px)' }}></div>
-                </div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Scan at Cashier<br/>(Coming Soon)</p>
-              </div>
-            </div>
-
-            {/* Fixed Bottom Action Area */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100">
-              <button 
-                onClick={() => {
-                  toast.success("Added to your coupons!");
-                  setSelectedOffer(null);
-                }}
-                className="w-full bg-[#FFF200] hover:bg-yellow-400 text-[#4A1A5C] font-extrabold py-3.5 rounded-xl shadow-sm transition-all flex items-center justify-center space-x-2"
-              >
-                <Ticket className="w-5 h-5" />
-                <span>Add to My Coupons</span>
+              <button
+                onClick={() => setSelectedOffer(null)}
+                className="w-10 h-10 rounded-full flex items-center
+                           justify-center text-xl font-bold
+                           hover:bg-gray-100 transition-colors"
+                style={{ color: '#782B90' }}>
+                ✕
               </button>
             </div>
+
+            {/* Offer banner */}
+            <div className="w-full h-32 rounded-2xl mb-4
+                            flex items-center justify-center"
+                 style={{ 
+                   background: 'linear-gradient(135deg, #782B90, #4A1A5C)'
+                 }}>
+              <span className="text-5xl font-black"
+                    style={{ color: '#FFF200' }}>
+                {selectedOffer.discount_type === 'percentage'
+                  ? `${selectedOffer.discount_value}% OFF`
+                  : `₹${selectedOffer.discount_value} OFF`}
+              </span>
+            </div>
+
+            {/* Details */}
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              {selectedOffer.title}
+            </h3>
+            <p className="text-gray-600 mb-4">
+              {selectedOffer.description}
+            </p>
+
+            {/* Info pills */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className="px-3 py-1 rounded-full text-sm"
+                    style={{ background: '#F3E8F7', color: '#782B90' }}>
+                📍 {selectedOffer.store_name || 'All Stores'}
+              </span>
+              {selectedOffer.min_purchase > 0 && (
+                <span className="px-3 py-1 rounded-full text-sm"
+                      style={{ 
+                        background: '#FFFDE7',
+                        color: '#F57F17'
+                      }}>
+                  Min ₹{selectedOffer.min_purchase}
+                </span>
+              )}
+              <span className="px-3 py-1 rounded-full text-sm"
+                    style={{ background: '#E8F5E9', color: '#2E7D32' }}>
+                Valid till {new Date(selectedOffer.valid_until)
+                  .toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short'
+                  })}
+              </span>
+            </div>
+
+            {/* Close button bottom */}
+            <button
+              onClick={() => setSelectedOffer(null)}
+              className="w-full py-3 rounded-xl font-bold text-lg"
+              style={{ background: '#782B90', color: 'white' }}>
+              Got it
+            </button>
           </div>
         </div>
       )}
@@ -276,12 +275,21 @@ export const Offers = () => {
 // Subcomponent: Offer Card
 const OfferCard = ({ offer, onClick }) => {
   const { bg, icon: Icon } = getCategoryStyles(offer.category);
-  const isExpiringSoon = differenceInHours(new Date(offer.valid_until), new Date()) < 48;
+  const isExpiringSoonLogic = (validUntil) => {
+    const diff = new Date(validUntil) - new Date();
+    return diff > 0 && diff < 24 * 60 * 60 * 1000;
+  };
+  const isExpiringSoon = isExpiringSoonLogic(offer.valid_until);
 
   return (
     <div 
       onClick={onClick}
-      className="bg-white rounded-2xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)] overflow-hidden flex flex-col cursor-pointer hover:border-[#782B90] hover:shadow-md transition-all group"
+      className="bg-white rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-all group"
+      style={{
+        border: isExpiringSoon
+          ? '2px solid #EF4444'
+          : '1px solid #E0E0E0'
+      }}
     >
       {/* Banner */}
       <div className={`h-20 sm:h-24 bg-gradient-to-br ${bg} relative p-3 sm:p-4 flex items-start justify-between`}>
