@@ -49,6 +49,16 @@ We strictly enforce Savomart's premium color scheme across the application:
 
 ---
 
+## 🌐 Live Demo
+
+Note: The backend is hosted on Render free tier.
+Free tier services spin down after 15 minutes of
+inactivity. The first request after inactivity may
+take 30-60 seconds to respond. Please wait for the
+initial load — subsequent requests will be fast.
+
+---
+
 ## 📂 Folder Structure
 
 ```

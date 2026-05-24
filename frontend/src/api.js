@@ -1,52 +1,34 @@
 import axios from "axios";
 
-// Base API configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8001",
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8001',
   headers: {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
   },
-});
+  timeout: 30000,
+})
 
-let authToken = null;
-
-// Allow context to update token dynamically in memory
-export const setAuthToken = (token) => {
-  authToken = token;
-};
-
-// Request Interceptor: Attach JWT Token to outgoing requests
-api.interceptors.request.use(
-  (config) => {
-    const activeToken = authToken || localStorage.getItem("savomart_token");
-    if (activeToken) {
-      config.headers.Authorization = `Bearer ${activeToken}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+// Add auth token to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('savomart_token') 
+                || sessionStorage.getItem('savomart_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
   }
-);
+  return config
+})
 
-// Response Interceptor: Catch 401 Unauthorized errors and force login redirect
+// Handle 401 globally
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      // Clear cache and session
-      localStorage.removeItem("savomart_token");
-      localStorage.removeItem("savomart_user");
-      setAuthToken(null);
-
-      // Avoid infinite loop if user is already on Login screen
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
+    if (error.response?.status === 401) {
+      localStorage.removeItem('savomart_token')
+      window.location.href = '/login'
     }
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
-);
+)
 
 // --- API Endpoint Handlers ---
 

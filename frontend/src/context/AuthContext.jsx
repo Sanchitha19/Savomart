@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { getMe, setAuthToken } from '../api';
+import { getMe } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -14,7 +14,6 @@ export const AuthProvider = ({ children }) => {
       if (savedToken) {
         try {
           // Temporarily set the token in Axios interceptor to verify
-          setAuthToken(savedToken);
           const userData = await getMe();
           
           // If call succeeds, set state
@@ -24,7 +23,6 @@ export const AuthProvider = ({ children }) => {
           console.error("Session restore failed, token may be expired:", error);
           // Clean up invalid session
           localStorage.removeItem("savomart_token");
-          setAuthToken(null);
         }
       }
       setIsLoading(false);
@@ -36,14 +34,12 @@ export const AuthProvider = ({ children }) => {
   const login = (newToken, userData) => {
     setToken(newToken);
     setUser(userData);
-    setAuthToken(newToken);
     localStorage.setItem("savomart_token", newToken);
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    setAuthToken(null);
     localStorage.removeItem("savomart_token");
   };
 

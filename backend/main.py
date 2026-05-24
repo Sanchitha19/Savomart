@@ -9,7 +9,8 @@ load_dotenv()
 
 from database import Base, engine, SessionLocal
 from seed import seed_db
-from models import User
+from models import User, OTPStore, Coupon, Offer
+from models import SupportRequest, PointsTransaction
 
 # Import Routers
 from routers import auth, users, offers, stores, support
@@ -23,28 +24,26 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup():
     Base.metadata.create_all(bind=engine)
-    print("Database tables created", flush=True)
     db = SessionLocal()
-    if db.query(User).count() == 0:
-        seed_db()
-    db.close()
+    try:
+        if db.query(User).count() == 0:
+            from seed import seed_db
+            seed_db()
+            print("Seed data inserted successfully")
+        else:
+            print(f"Database ready — {db.query(User).count()} users found")
+    except Exception as e:
+        print(f"Startup error: {e}")
+    finally:
+        db.close()
 
 # Enable CORS — include deployed frontend URL from env + local dev origins
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-
-origins = [
-    FRONTEND_URL,
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://localhost:5173",  # default Vite port
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-]
+FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
