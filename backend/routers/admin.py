@@ -1,83 +1,69 @@
-"""
-Admin API Router
-----------------
-Provides endpoints for the Savomart Admin Panel:
-  POST /api/admin/login              — email + password → JWT
-  GET  /api/admin/stats              — ticket counts by status / category
-  GET  /api/admin/tickets            — paginated ticket list with filters
-  PUT  /api/admin/tickets/{id}/status — update ticket status
-  GET  /api/admin/download-excel     — generate + download Excel on-the-fly
-
-All non-login endpoints require a Bearer token with role="admin".
-This auth is COMPLETELY SEPARATE from the customer user auth.
-"""
-
-import os
-import io
-from datetime import datetime
-
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
-from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from passlib.context import CryptContext
-from typing import Optional
-
+from sqlalchemy import func
 from database import get_db
-from models import Admin, SupportRequest
-from auth import create_access_token, SECRET_KEY, ALGORITHM
-from jose import jwt, JWTError
+from models import SupportRequest, Admin
+from passlib.context import CryptContext
+from pydantic import BaseModel
+from datetime import datetime
+import os
+import openpyxl
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt"], deprecated="auto"
+)
 
-
-# ── Schemas ────────────────────────────────────────────────────────────────────
-
-class AdminLogin(BaseModel):
+class AdminLoginSchema(BaseModel):
     email: str
     password: str
 
-
-class StatusUpdate(BaseModel):
+class StatusUpdateSchema(BaseModel):
     status: str
 
-
-# ── Admin token guard ─────────────────────────────────────────────────────────
-
-def get_admin_payload(authorization: Optional[str] = Header(None)) -> dict:
-    """
-    Dependency: validates the Bearer token and ensures role == 'admin'.
-    Raises 401 if token is missing, invalid, or belongs to a customer.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Admin authentication required")
-    token = authorization.split(" ", 1)[1]
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired admin token")
-    if payload.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Not an admin token")
-    return payload
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+def create_admin_token(admin_id: int, email: str):
+    from jose import jwt
+    import os
+    SECRET = os.getenv("SECRET_KEY", "savomart-secret-2025")
+    data = {
+        "sub": str(admin_id),
+        "email": email,
+        "role": "admin",
+        "exp": datetime.utcnow().timestamp() + 86400 * 7
+    }
+    return jwt.encode(data, SECRET, algorithm="HS256")
 
 @router.post("/login")
-def admin_login(payload: AdminLogin, db: Session = Depends(get_db)):
-    """Authenticate admin with email + password. Returns JWT with role=admin."""
-    admin = db.query(Admin).filter(Admin.email == payload.email).first()
-    if not admin or not pwd_context.verify(payload.password, admin.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    token = create_access_token({
-        "sub": str(admin.id),
-        "email": admin.email,
-        "role": "admin"
-    })
-
+def admin_login(
+    payload: AdminLoginSchema,
+    db: Session = Depends(get_db)
+):
+    print(f"Admin login attempt: {payload.email}")
+    
+    admin = db.query(Admin).filter(
+        Admin.email == payload.email.strip().lower()
+    ).first()
+    
+    if not admin:
+        print(f"Admin not found: {payload.email}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+    
+    if not pwd_context.verify(
+        payload.password, admin.password_hash
+    ):
+        print("Password verification failed")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+    
+    token = create_admin_token(admin.id, admin.email)
+    print(f"Admin login success: {admin.email}")
+    
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -88,204 +74,250 @@ def admin_login(payload: AdminLogin, db: Session = Depends(get_db)):
         }
     }
 
-
 @router.get("/stats")
-def get_admin_stats(db: Session = Depends(get_db)):
+def get_stats(db: Session = Depends(get_db)):
+    print("Stats endpoint called")
     try:
-        from sqlalchemy import func, cast, Date
-
         total = db.query(SupportRequest).count()
-
-        open_count = db.query(SupportRequest).filter(
+        open_c = db.query(SupportRequest).filter(
             SupportRequest.status == "Open"
         ).count()
-
-        in_progress = db.query(SupportRequest).filter(
+        inp = db.query(SupportRequest).filter(
             SupportRequest.status == "InProgress"
         ).count()
-
-        resolved = db.query(SupportRequest).filter(
+        res = db.query(SupportRequest).filter(
             SupportRequest.status == "Resolved"
         ).count()
-
-        # Today count - SQLite compatible
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        today_count = db.query(SupportRequest).filter(
-            SupportRequest.created_at >= today_str
+        
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today_c = db.query(SupportRequest).filter(
+            SupportRequest.created_at >= today
         ).count()
-
-        categories = db.query(
+        
+        cats = db.query(
             SupportRequest.issue_category,
-            func.count(SupportRequest.id).label("count")
+            func.count(SupportRequest.id)
         ).group_by(
             SupportRequest.issue_category
         ).all()
-
-        return {
+        
+        result = {
             "total": total,
-            "open": open_count,
-            "in_progress": in_progress,
-            "resolved": resolved,
-            "today": today_count,
+            "open": open_c,
+            "in_progress": inp,
+            "resolved": res,
+            "today": today_c,
             "categories": [
                 {"category": c[0], "count": c[1]}
-                for c in categories
+                for c in cats
             ]
         }
+        print(f"Stats result: {result}")
+        return result
+        
     except Exception as e:
         print(f"Stats error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"Stats error: {str(e)}"
+            detail=str(e)
         )
 
-
 @router.get("/tickets")
-def get_all_tickets(
+def get_tickets(
     status: str = Query(None),
     category: str = Query(None),
     search: str = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    skip: int = Query(0),
+    limit: int = Query(20),
     db: Session = Depends(get_db)
 ):
+    print(f"Tickets called: status={status} "
+          f"category={category} search={search}")
     try:
-        query = db.query(SupportRequest)
-
-        if status and status != "":
-            query = query.filter(
-                SupportRequest.status == status
-            )
-        if category and category != "":
-            query = query.filter(
+        q = db.query(SupportRequest)
+        
+        if status:
+            q = q.filter(SupportRequest.status == status)
+        if category:
+            q = q.filter(
                 SupportRequest.issue_category == category
             )
-        if search and search != "":
-            search_term = f"%{search}%"
-            query = query.filter(
-                SupportRequest.name.ilike(search_term) |
-                SupportRequest.phone.ilike(search_term)
+        if search:
+            s = f"%{search}%"
+            q = q.filter(
+                SupportRequest.name.ilike(s) |
+                SupportRequest.phone.ilike(s)
             )
-
-        total = query.count()
-        tickets = query.order_by(
+        
+        total = q.count()
+        print(f"Total matching tickets: {total}")
+        
+        items = q.order_by(
             SupportRequest.created_at.desc()
         ).offset(skip).limit(limit).all()
-
-        ticket_list = []
-        for t in tickets:
-            ticket_list.append({
+        
+        result = []
+        for t in items:
+            result.append({
                 "id": t.id,
                 "ticket_id": f"SAV-2025-{t.id:03d}",
-                "name": t.name,
-                "phone": t.phone,
+                "name": t.name or "",
+                "phone": t.phone or "",
                 "email": t.email or "",
-                "issue_category": t.issue_category,
-                "description": t.description,
-                "status": t.status,
-                "created_at": t.created_at.isoformat()
-                    if t.created_at else
-                    datetime.utcnow().isoformat()
+                "issue_category": t.issue_category or "",
+                "description": t.description or "",
+                "status": t.status or "Open",
+                "created_at": (
+                    t.created_at.isoformat()
+                    if t.created_at
+                    else datetime.utcnow().isoformat()
+                )
             })
-
+        
         return {
-            "tickets": ticket_list,
+            "tickets": result,
             "total": total,
             "pages": max(1, (total + limit - 1) // limit)
         }
-
+        
     except Exception as e:
         print(f"Tickets error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"Tickets error: {str(e)}"
+            detail=str(e)
         )
 
-
 @router.put("/tickets/{ticket_id}/status")
-def update_ticket_status(
+def update_status(
     ticket_id: int,
-    payload: StatusUpdate,
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_admin_payload)
+    payload: StatusUpdateSchema,
+    db: Session = Depends(get_db)
 ):
-    """Update the status of a support ticket (Open / InProgress / Resolved)."""
-    valid_statuses = ["Open", "InProgress", "Resolved"]
-    if payload.status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
-
-    ticket = db.query(SupportRequest).filter(SupportRequest.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
-    ticket.status = payload.status
+    valid = ["Open", "InProgress", "Resolved"]
+    if payload.status not in valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must be one of {valid}"
+        )
+    
+    t = db.query(SupportRequest).filter(
+        SupportRequest.id == ticket_id
+    ).first()
+    
+    if not t:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found"
+        )
+    
+    t.status = payload.status
     db.commit()
-    return {"message": "Status updated", "status": payload.status}
-
+    return {
+        "message": "Updated",
+        "status": payload.status
+    }
 
 @router.get("/download-excel")
-def download_excel(
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_admin_payload)
-):
-    """
-    Generate an Excel file on-the-fly from the database and stream it back.
-    This avoids any dependency on ephemeral disk files (e.g. on Render).
-    """
+def download_excel(db: Session = Depends(get_db)):
     try:
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
-    except ImportError:
-        raise HTTPException(status_code=500, detail="openpyxl not installed")
-
-    tickets = db.query(SupportRequest).order_by(SupportRequest.created_at.desc()).all()
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Support Requests"
-
-    # Header styling
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="782B90", end_color="782B90", fill_type="solid")
-    headers = ["Ticket ID", "Name", "Phone", "Email", "Category", "Description", "Status", "Created At"]
-
-    ws.append(headers)
-    for col_idx, _ in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    # Column widths
-    col_widths = [16, 20, 14, 28, 18, 45, 14, 22]
-    for i, width in enumerate(col_widths, 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
-
-    year = datetime.utcnow().year
-    for t in tickets:
-        ws.append([
-            f"SAV-{year}-{t.id:03d}",
-            t.name,
-            t.phone,
-            t.email or "",
-            t.issue_category,
-            t.description,
-            t.status,
-            t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else ""
-        ])
-
-    # Write to in-memory buffer — no disk writes needed
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-
-    filename = f"savomart_support_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    return StreamingResponse(
-        buffer,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
+        filepath = os.path.join(
+            os.getcwd(), "support_requests.xlsx"
+        )
+        print(f"Generating Excel at: {filepath}")
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Support Tickets"
+        
+        # Style header
+        headers = [
+            "Ticket ID", "Name", "Phone", "Email",
+            "Category", "Description", "Status",
+            "Created At"
+        ]
+        ws.append(headers)
+        
+        # Style header row
+        from openpyxl.styles import (
+            PatternFill, Font, Alignment
+        )
+        header_fill = PatternFill(
+            start_color="782B90",
+            end_color="782B90",
+            fill_type="solid"
+        )
+        header_font = Font(
+            color="FFFFFF", bold=True
+        )
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+        
+        # Add all tickets from DB
+        tickets = db.query(SupportRequest).order_by(
+            SupportRequest.created_at.desc()
+        ).all()
+        
+        for t in tickets:
+            ws.append([
+                f"SAV-2025-{t.id:03d}",
+                t.name or "",
+                t.phone or "",
+                t.email or "",
+                t.issue_category or "",
+                t.description or "",
+                t.status or "Open",
+                t.created_at.strftime("%Y-%m-%d %H:%M")
+                    if t.created_at else ""
+            ])
+        
+        # Auto-fit columns
+        for col in ws.columns:
+            max_len = 0
+            col_letter = col[0].column_letter
+            for cell in col:
+                try:
+                    if cell.value:
+                        max_len = max(
+                            max_len, len(str(cell.value))
+                        )
+                except:
+                    pass
+            ws.column_dimensions[col_letter].width = (
+                min(max_len + 2, 50)
+            )
+        
+        wb.save(filepath)
+        print(f"Excel saved: {len(tickets)} tickets")
+        
+        return FileResponse(
+            path=filepath,
+            media_type=(
+                "application/vnd.openxmlformats-"
+                "officedocument.spreadsheetml.sheet"
+            ),
+            filename="savomart_support_tickets.xlsx",
+            headers={
+                "Content-Disposition": (
+                    "attachment; "
+                    "filename=savomart_support_tickets.xlsx"
+                ),
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": (
+                    "Content-Disposition"
+                )
+            }
+        )
+    except Exception as e:
+        print(f"Excel error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Excel error: {str(e)}"
+        )

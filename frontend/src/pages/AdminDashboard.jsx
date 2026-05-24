@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
-const ADMIN_API = import.meta.env.VITE_API_URL
-  || 'http://localhost:8001'
+const ADMIN_API = (
+  import.meta.env.VITE_API_URL || 'http://localhost:8001'
+).replace(/\/$/, '')  // removes trailing slash
+console.log('Admin API URL:', ADMIN_API)
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
@@ -157,25 +159,64 @@ export default function AdminDashboard() {
   }
 
   const downloadExcel = async () => {
+    const token = getToken()
+    if (!token) {
+      toast.error('Not authenticated')
+      return
+    }
+    
     try {
-      const token = getToken()
-      const res = await fetch(
+      toast.loading('Preparing download...')
+      
+      const response = await fetch(
         `${ADMIN_API}/api/admin/download-excel`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
       )
-      if (!res.ok) throw new Error('Download failed')
-      const blob = await res.blob()
+      
+      toast.dismiss()
+      
+      if (!response.ok) {
+        const err = await response.text()
+        console.error('Download error:', err)
+        toast.error('Download failed: ' + response.status)
+        return
+      }
+      
+      const blob = await response.blob()
+      console.log('Blob size:', blob.size, 'type:', blob.type)
+      
+      if (blob.size === 0) {
+        toast.error('No data to download')
+        return
+      }
+      
       const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'savomart_tickets.xlsx'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-      toast.success('Downloaded!')
-    } catch (err) {
-      toast.error('Download failed')
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute(
+        'download',
+        'savomart_support_tickets.xlsx'
+      )
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 100)
+      
+      toast.success('Excel downloaded successfully!')
+      
+    } catch (error) {
+      toast.dismiss()
+      console.error('Download exception:', error)
+      toast.error('Download failed — check console')
     }
   }
 
