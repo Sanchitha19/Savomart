@@ -46,7 +46,10 @@ export default function AdminDashboard() {
       return null
     }
 
-    const url = `${ADMIN_API}${path}`
+    const cleanApi = ADMIN_API.endsWith('/') ? ADMIN_API.slice(0, -1) : ADMIN_API;
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${cleanApi}${cleanPath}`;
+    
     const res = await fetch(url, {
       ...options,
       headers: {
@@ -64,7 +67,7 @@ export default function AdminDashboard() {
 
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`${res.status}: ${text}`)
+      throw new Error(`${text}`)
     }
 
     return res.json()
