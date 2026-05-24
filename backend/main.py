@@ -8,12 +8,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import Base, engine, SessionLocal
-from seed import seed_db
+from seed import seed_db, seed_admin
 from models import User, OTPStore, Coupon, Offer
-from models import SupportRequest, PointsTransaction
+from models import SupportRequest, PointsTransaction, Admin
 
 # Import Routers
 from routers import auth, users, offers, stores, support
+import routers.admin as admin_router
 
 app = FastAPI(
     title="Savomart Loyalty API",
@@ -32,6 +33,8 @@ async def startup():
             print("Seed data inserted successfully")
         else:
             print(f"Database ready — {db.query(User).count()} users found")
+        # Always ensure admin account exists (idempotent)
+        seed_admin(db)
     except Exception as e:
         print(f"Startup error: {e}")
     finally:
@@ -54,6 +57,7 @@ app.include_router(users.router, prefix="/api")
 app.include_router(offers.router, prefix="/api")
 app.include_router(stores.router, prefix="/api")
 app.include_router(support.router, prefix="/api")
+app.include_router(admin_router.router, prefix="/api/admin", tags=["admin"])
 
 @app.get("/health", tags=["Health"])
 def health_check():

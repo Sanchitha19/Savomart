@@ -113,3 +113,13 @@ class PointsTransaction(Base):
 
     # Relationships
     user = relationship("User", back_populates="points_transactions")
+
+
+class Admin(Base):
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    name = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)

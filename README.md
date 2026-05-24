@@ -4,7 +4,7 @@ Welcome to the **Savomart Loyalty Companion Web App**, a premium loyalty dashboa
 
 ---
 
-## 🎨 Brand Design Identity
+##  Brand Design Identity
 We strictly enforce Savomart's premium color scheme across the application:
 - **Primary Purple**: `#782B90`
 - **Primary Yellow**: `#FFF200`
@@ -17,7 +17,7 @@ We strictly enforce Savomart's premium color scheme across the application:
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 ### 1. Frictionless OTP Authentication Sandbox
 - Simulates SMS verification with standard 6-digit OTP codes.
@@ -49,7 +49,7 @@ We strictly enforce Savomart's premium color scheme across the application:
 
 ---
 
-## 🌐 Live Demo
+## Live Demo
 
 Note: The backend is hosted on Render free tier.
 Free tier services spin down after 15 minutes of
@@ -59,7 +59,7 @@ initial load — subsequent requests will be fast.
 
 ---
 
-## 📂 Folder Structure
+##  Folder Structure
 
 ```
 savomart-sde-intern-task-2026/
@@ -109,7 +109,7 @@ savomart-sde-intern-task-2026/
 
 ---
 
-## 🛠️ Installation & Setup
+##  Installation & Setup
 
 ### Prerequisites
 - Python 3.10+

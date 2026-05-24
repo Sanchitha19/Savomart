@@ -10,6 +10,8 @@ import Profile from "./pages/Profile";
 import Offers from "./pages/Offers";
 import Stores from "./pages/Stores";
 import Support from "./pages/Support";
+import AdminLogin from "./pages/AdminLogin";
+import AdminDashboard from "./pages/AdminDashboard";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useLocation } from "react-router-dom";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -140,6 +142,10 @@ function App() {
                 } 
               />
               
+              {/* Admin routes — completely separate from customer auth */}
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
+
               {/* Catch-all fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

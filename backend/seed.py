@@ -1,7 +1,23 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database import SessionLocal, Base, engine
-from models import User, Coupon, Offer, PointsTransaction
+from models import User, Coupon, Offer, PointsTransaction, Admin
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def seed_admin(db: Session):
+    """Create a default admin account if none exists."""
+    if db.query(Admin).count() == 0:
+        admin = Admin(
+            email="admin@savomart.in",
+            password_hash=pwd_context.hash("Admin@123"),
+            name="Savomart Admin"
+        )
+        db.add(admin)
+        db.commit()
+        print("Admin created: admin@savomart.in / Admin@123")
+
 
 def seed_db():
     # Ensure tables exist
