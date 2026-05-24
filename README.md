@@ -4,6 +4,14 @@ Welcome to the **Savomart Loyalty Companion Web App**, a premium loyalty dashboa
 
 ---
 
+## 🚀 Live Demo
+- **Customer App (Frontend):** [https://savomart.vercel.app](https://savomart.vercel.app)
+- **Admin Portal:** [https://savomart.vercel.app/admin/login](https://savomart.vercel.app/admin/login)
+  - **Admin Email:** `admin@savomart.in`
+  - **Admin Password:** `Admin@123`
+- **Backend API (Render):** [https://savomart-backend-88ph.onrender.com/docs](https://savomart-backend-88ph.onrender.com/docs)
+---
+
 ##  Brand Design Identity
 We strictly enforce Savomart's premium color scheme across the application:
 - **Primary Purple**: `#782B90`
