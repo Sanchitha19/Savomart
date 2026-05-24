@@ -6,6 +6,10 @@ const ADMIN_API = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 
 async function adminFetch(path, options = {}) {
   const token = sessionStorage.getItem('admin_token')
+  if (!token) {
+    window.location.href = '/admin/login'
+    return null
+  }
   const res = await fetch(`${ADMIN_API}${path}`, {
     ...options,
     headers: {
@@ -19,6 +23,11 @@ async function adminFetch(path, options = {}) {
     sessionStorage.removeItem('admin_user')
     window.location.href = '/admin/login'
     return null
+  }
+  if (!res.ok) {
+    const err = await res.text()
+    console.error(`API error ${res.status}:`, err)
+    throw new Error(`HTTP ${res.status}`)
   }
   return res.json()
 }
@@ -129,9 +138,30 @@ export default function AdminDashboard() {
     setPage(1)
   }
 
-  const downloadExcel = () => {
-    const token = sessionStorage.getItem('admin_token')
-    window.open(`${ADMIN_API}/api/admin/download-excel?token=${token}`, '_blank')
+  const downloadExcel = async () => {
+    try {
+      const token = sessionStorage.getItem('admin_token')
+      const res = await fetch(`${ADMIN_API}/api/admin/download-excel`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        toast.error('Download failed — try again')
+        return
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `savomart_support_${new Date().toISOString().slice(0,10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Excel downloaded!')
+    } catch (e) {
+      console.error('Download error:', e)
+      toast.error('Download failed — try again')
+    }
   }
 
   const s = (style) => style  // identity helper for readability

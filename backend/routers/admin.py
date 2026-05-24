@@ -6,17 +6,18 @@ Provides endpoints for the Savomart Admin Panel:
   GET  /api/admin/stats              — ticket counts by status / category
   GET  /api/admin/tickets            — paginated ticket list with filters
   PUT  /api/admin/tickets/{id}/status — update ticket status
-  GET  /api/admin/download-excel     — download support_requests.xlsx
+  GET  /api/admin/download-excel     — generate + download Excel on-the-fly
 
 All non-login endpoints require a Bearer token with role="admin".
 This auth is COMPLETELY SEPARATE from the customer user auth.
 """
 
 import os
+import io
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Header
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -153,16 +154,16 @@ def get_admin_tickets(
                 "ticket_id": f"SAV-{year}-{t.id:03d}",
                 "name": t.name,
                 "phone": t.phone,
-                "email": t.email,
+                "email": t.email or "",
                 "issue_category": t.issue_category,
                 "description": t.description,
                 "status": t.status,
-                "created_at": t.created_at.isoformat()
+                "created_at": t.created_at.isoformat() if t.created_at else ""
             }
             for t in tickets
         ],
         "total": total,
-        "pages": (total + limit - 1) // limit if limit > 0 else 1
+        "pages": max(1, (total + limit - 1) // limit)
     }
 
 
@@ -188,13 +189,64 @@ def update_ticket_status(
 
 
 @router.get("/download-excel")
-def download_excel(_: dict = Depends(get_admin_payload)):
-    """Download the Excel export of support requests."""
-    filepath = "support_requests.xlsx"
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="No support requests have been exported yet")
-    return FileResponse(
-        filepath,
+def download_excel(
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_admin_payload)
+):
+    """
+    Generate an Excel file on-the-fly from the database and stream it back.
+    This avoids any dependency on ephemeral disk files (e.g. on Render).
+    """
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        raise HTTPException(status_code=500, detail="openpyxl not installed")
+
+    tickets = db.query(SupportRequest).order_by(SupportRequest.created_at.desc()).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Support Requests"
+
+    # Header styling
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="782B90", end_color="782B90", fill_type="solid")
+    headers = ["Ticket ID", "Name", "Phone", "Email", "Category", "Description", "Status", "Created At"]
+
+    ws.append(headers)
+    for col_idx, _ in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Column widths
+    col_widths = [16, 20, 14, 28, 18, 45, 14, 22]
+    for i, width in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+    year = datetime.utcnow().year
+    for t in tickets:
+        ws.append([
+            f"SAV-{year}-{t.id:03d}",
+            t.name,
+            t.phone,
+            t.email or "",
+            t.issue_category,
+            t.description,
+            t.status,
+            t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else ""
+        ])
+
+    # Write to in-memory buffer — no disk writes needed
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"savomart_support_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return StreamingResponse(
+        buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="savomart_support_requests.xlsx"
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
