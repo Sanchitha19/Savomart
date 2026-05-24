@@ -325,11 +325,15 @@ export const Login = () => {
               </form>
             </div>
           </div>
+        </div>
       </div>
 
-      <div className="mt-8 text-center relative z-10">
-        <a href="/admin/login" className="text-white/40 hover:text-white/80 text-xs font-medium transition-colors">
-          Admin Portal
+      <div className="mt-4 text-center z-10 relative">
+        <a 
+          href="/admin/login"
+          className="text-xs opacity-50 hover:opacity-100"
+          style={{ color: 'white' }}>
+          Admin Portal →
         </a>
       </div>
     </div>
