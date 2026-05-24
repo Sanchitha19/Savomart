@@ -97,8 +97,20 @@ class SupportRequest(Base):
     status = Column(String, default="Open")  # Open, InProgress, Resolved
     saved_to_excel = Column(Boolean, default=False)
 
+    # --- Resolution tracking ---
+    resolved_at = Column(DateTime, nullable=True)        # When admin resolved it
+    resolution_note = Column(String, nullable=True)      # Admin's resolution message to customer
+    resolved_by = Column(String, nullable=True)          # Admin name who resolved it
+
+    # --- Customer satisfaction feedback ---
+    customer_feedback = Column(String, nullable=True)    # None | "Accepted" | "Reopened"
+    feedback_at = Column(DateTime, nullable=True)        # When customer gave feedback
+    reopen_reason = Column(String, nullable=True)        # Customer's reason if they reopen
+    reopen_count = Column(Integer, default=0)            # How many times ticket was reopened
+
     # Relationships
     user = relationship("User", back_populates="support_requests")
+
 
 
 class PointsTransaction(Base):

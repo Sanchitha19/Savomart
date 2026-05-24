@@ -21,6 +21,107 @@ class AdminLoginSchema(BaseModel):
 
 class StatusUpdateSchema(BaseModel):
     status: str
+    resolution_note: str = ""
+    resolved_by: str = "Admin"
+
+@router.put("/tickets/{ticket_id}/status")
+def update_status(
+    ticket_id: int,
+    payload: StatusUpdateSchema,
+    db: Session = Depends(get_db)
+):
+    valid = ["Open", "InProgress", "Resolved"]
+    if payload.status not in valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must be one of {valid}"
+        )
+    t = db.query(SupportRequest).filter(
+        SupportRequest.id == ticket_id
+    ).first()
+    if not t:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found"
+        )
+    old_status = t.status
+    t.status = payload.status
+    # When marking as resolved — set timestamp and note
+    if payload.status == "Resolved" and old_status != "Resolved":
+        t.resolved_at = datetime.utcnow()
+        t.resolved_by = payload.resolved_by or "Admin"
+        t.resolution_note = payload.resolution_note or ""
+        t.customer_feedback = None  # reset feedback
+        print(f"Ticket {ticket_id} resolved at {t.resolved_at} by {t.resolved_by}")
+    # When reopening — clear resolution data and increment count
+    if payload.status == "Open" and old_status == "Resolved":
+        t.resolved_at = None
+        t.resolved_by = None
+        t.resolution_note = None
+        t.customer_feedback = None
+        t.reopen_count = (t.reopen_count or 0) + 1
+    db.commit()
+    db.refresh(t)
+    return {
+        "message": "Status updated",
+        "status": t.status,
+        "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
+        "resolution_note": t.resolution_note,
+        "resolved_by": t.resolved_by,
+        "customer_feedback": t.customer_feedback,
+        "reopen_count": t.reopen_count,
+    }
+
+class FeedbackSchema(BaseModel):
+    feedback: str
+    reason: str = ""
+
+@router.post("/tickets/{ticket_id}/feedback")
+def submit_customer_feedback(
+    ticket_id: int,
+    payload: FeedbackSchema,
+    db: Session = Depends(get_db)
+):
+    t = db.query(SupportRequest).filter(
+        SupportRequest.id == ticket_id
+    ).first()
+    if not t:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found"
+        )
+    if t.status != "Resolved":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only give feedback on resolved tickets"
+        )
+    valid_feedback = ["Accepted", "Reopened"]
+    if payload.feedback not in valid_feedback:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Feedback must be: {valid_feedback}"
+        )
+    t.customer_feedback = payload.feedback
+    t.feedback_at = datetime.utcnow()
+    if payload.feedback == "Reopened":
+        t.status = "Open"
+        t.reopen_reason = payload.reason or ""
+        t.reopen_count = (t.reopen_count or 0) + 1
+        t.resolved_at = None
+        t.resolution_note = None
+        t.resolved_by = None
+        print(f"Ticket {ticket_id} reopened by customer")
+    else:
+        print(f"Ticket {ticket_id} accepted by customer")
+    db.commit()
+    return {
+        "message": "Feedback submitted",
+        "feedback": t.customer_feedback,
+        "status": t.status,
+        "feedback_at": t.feedback_at.isoformat() if t.feedback_at else None,
+        "reopen_reason": t.reopen_reason,
+        "reopen_count": t.reopen_count,
+    }
 
 def create_admin_token(admin_id: int, email: str):
     from jose import jwt
@@ -237,7 +338,10 @@ def download_excel(db: Session = Depends(get_db)):
         headers = [
             "Ticket ID", "Name", "Phone", "Email",
             "Category", "Description", "Status",
-            "Created At"
+            "Created At", "Resolved At", "Resolution Note",
+            "Resolved By", "Customer Feedback", "Feedback Date",
+            "Reopen Reason", "Times Reopened"
+        ]
         ]
         ws.append(headers)
         
@@ -264,7 +368,23 @@ def download_excel(db: Session = Depends(get_db)):
         ).all()
         
         for t in tickets:
-            ws.append([
+                    ws.append([
+            f"SAV-2025-{t.id:03d}",
+            t.name or "",
+            t.phone or "",
+            t.email or "",
+            t.issue_category or "",
+            t.description or "",
+            t.status or "Open",
+            t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+            t.resolved_at.strftime("%Y-%m-%d %H:%M") if t.resolved_at else "",
+            t.resolution_note or "",
+            t.resolved_by or "",
+            t.customer_feedback or "",
+            t.feedback_at.strftime("%Y-%m-%d %H:%M") if t.feedback_at else "",
+            t.reopen_reason or "",
+            str(t.reopen_count or 0)
+        ])
                 f"SAV-2025-{t.id:03d}",
                 t.name or "",
                 t.phone or "",
