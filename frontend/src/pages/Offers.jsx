@@ -177,8 +177,14 @@ export const Offers = () => {
 
       {/* Offer Detail Modal */}
       {selectedOffer && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden animate-slide-up sm:animate-scale-up shadow-2xl relative max-h-[90vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4"
+          onClick={() => setSelectedOffer(null)}
+        >
+          <div
+            className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden animate-slide-up sm:animate-scale-up shadow-2xl relative max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
             
             {/* Colored Banner Header */}
             <div className={`relative h-40 bg-gradient-to-r ${getCategoryStyles(selectedOffer.category).bg} flex items-center justify-center p-6 text-white`}>

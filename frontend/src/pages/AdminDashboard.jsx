@@ -10,32 +10,35 @@ async function adminFetch(path, options = {}) {
     window.location.href = '/admin/login'
     return null
   }
-  const res = await fetch(`${ADMIN_API}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      ...(options.headers || {})
+  try {
+    const res = await fetch(`${ADMIN_API}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...(options.headers || {})
+      }
+    })
+
+    if (res.status === 401) {
+      sessionStorage.removeItem('admin_token')
+      sessionStorage.removeItem('admin_user')
+      window.location.href = '/admin/login'
+      return null
     }
-  })
-  if (res.status === 401) {
-    sessionStorage.removeItem('admin_token')
-    sessionStorage.removeItem('admin_user')
-    window.location.href = '/admin/login'
-    return null
+
+    const data = await res.json()
+    return data
+  } catch (err) {
+    console.error('Fetch error:', err)
+    throw err
   }
-  if (!res.ok) {
-    const err = await res.text()
-    console.error(`API error ${res.status}:`, err)
-    throw new Error(`HTTP ${res.status}`)
-  }
-  return res.json()
 }
 
 const STATUS_CONFIG = {
-  Open:       { color: '#DC2626', bg: '#FEF2F2', label: 'Open' },
-  InProgress: { color: '#D97706', bg: '#FFFBEB', label: 'In Progress' },
-  Resolved:   { color: '#16A34A', bg: '#F0FDF4', label: 'Resolved' }
+  Open:       { color: '#DC2626', bg: '#FEF2F2', label: '🔴 Open',        dot: '#EF4444' },
+  InProgress: { color: '#D97706', bg: '#FFFBEB', label: '🟡 In Progress', dot: '#F59E0B' },
+  Resolved:   { color: '#16A34A', bg: '#F0FDF4', label: '🟢 Resolved',    dot: '#22C55E' }
 }
 
 const STAT_CARDS = [
@@ -45,6 +48,53 @@ const STAT_CARDS = [
   { key: 'in_progress', label: 'In Progress', color: '#D97706', emoji: '🟡' },
   { key: 'resolved',    label: 'Resolved',    color: '#16A34A', emoji: '✅' }
 ]
+
+// Status timeline stepper component
+function StatusTimeline({ status }) {
+  const steps = [
+    { key: 'Open',       label: 'Open',        color: '#EF4444' },
+    { key: 'InProgress', label: 'In Progress', color: '#F59E0B' },
+    { key: 'Resolved',   label: 'Resolved',    color: '#22C55E' }
+  ]
+  const stepOrder = ['Open', 'InProgress', 'Resolved']
+  const currentIdx = stepOrder.indexOf(status)
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 0' }}>
+      {steps.map((step, idx) => {
+        const isReached = idx <= currentIdx
+        return (
+          <div key={step.key} style={{ display: 'contents' }}>
+            {/* Circle */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 56
+            }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 800, color: 'white',
+                background: isReached ? step.color : '#E0E0E0',
+                transition: 'all 0.3s'
+              }}>{idx + 1}</div>
+              <span style={{ fontSize: 10, color: isReached ? '#333' : '#aaa', fontWeight: 600 }}>
+                {step.label}
+              </span>
+            </div>
+            {/* Connecting line (not after last) */}
+            {idx < steps.length - 1 && (
+              <div style={{
+                flex: 1, height: 3, borderRadius: 2, minWidth: 24,
+                background: idx < currentIdx ? '#782B90' : '#E0E0E0',
+                transition: 'all 0.3s',
+                marginBottom: 18
+              }} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
@@ -58,7 +108,7 @@ export default function AdminDashboard() {
   const [searchInput, setSearchInput] = useState('')
   const [page, setPage]             = useState(1)
   const [updating, setUpdating]     = useState(null)
-  const [expandedId, setExpandedId] = useState(null)
+  const [expandedRow, setExpandedRow] = useState(null)
 
   const admin = (() => {
     try { return JSON.parse(sessionStorage.getItem('admin_user') || '{}') }
@@ -87,7 +137,8 @@ export default function AdminDashboard() {
         setTickets(Array.isArray(ticketsData.tickets) ? ticketsData.tickets : [])
         setTotal(ticketsData.total || 0)
       }
-    } catch {
+    } catch (e) {
+      console.error('Dashboard fetch error:', e)
       toast.error('Failed to load data')
     } finally {
       setLoading(false)
@@ -164,8 +215,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const s = (style) => style  // identity helper for readability
-
   return (
     <div id="admin-dashboard" style={{
       minHeight: '100vh',
@@ -202,8 +251,7 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, display: 'none' }}
-                className="md-show">
+          <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
             {admin.name || 'Admin'}
           </span>
           <button
@@ -394,7 +442,7 @@ export default function AdminDashboard() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: '#F8F0FC' }}>
-                      {['Ticket ID','Name','Phone','Category','Description','Status','Date','Action'].map(h => (
+                      {['Ticket ID','Name','Phone','Category','Description','Status','Date'].map(h => (
                         <th key={h} style={{
                           padding: '10px 14px', textAlign: 'left',
                           fontWeight: 700, color: '#782B90',
@@ -406,84 +454,122 @@ export default function AdminDashboard() {
                   <tbody>
                     {tickets.map((ticket, idx) => {
                       const sc = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.Open
-                      const isExpanded = expandedId === ticket.id
+                      const isExpanded = expandedRow === ticket.id
                       return (
-                        <tr key={ticket.id} style={{
-                          borderTop: '1px solid #F5F0F8',
-                          background: idx % 2 === 0 ? 'white' : '#FDFBFF',
-                          transition: 'background 0.15s'
-                        }}>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              fontFamily: 'monospace', fontWeight: 700,
-                              fontSize: 12, color: '#782B90'
-                            }}>{ticket.ticket_id}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>
-                            {ticket.name}
-                          </td>
-                          <td style={{ padding: '10px 14px', color: '#666' }}>
-                            {ticket.phone}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              background: '#F3E8F7', color: '#782B90',
-                              padding: '3px 10px', borderRadius: 999,
-                              fontSize: 11, fontWeight: 600
-                            }}>{ticket.issue_category}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: '#555', maxWidth: 200 }}>
-                            <div
-                              onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
-                              style={{
-                                cursor: 'pointer',
-                                overflow: isExpanded ? 'visible' : 'hidden',
-                                textOverflow: isExpanded ? 'unset' : 'ellipsis',
-                                whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                        <>
+                          <tr
+                            key={ticket.id}
+                            onClick={() => setExpandedRow(isExpanded ? null : ticket.id)}
+                            style={{
+                              borderTop: '1px solid #F5F0F8',
+                              background: idx % 2 === 0 ? 'white' : '#FDFBFF',
+                              cursor: 'pointer',
+                              transition: 'background 0.15s'
+                            }}
+                          >
+                            <td style={{ padding: '10px 14px' }}>
+                              <span style={{
+                                fontFamily: 'monospace', fontWeight: 700,
+                                fontSize: 12, color: '#782B90'
+                              }}>{ticket.ticket_id}</span>
+                            </td>
+                            <td style={{ padding: '10px 14px', fontWeight: 600 }}>
+                              {ticket.name}
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#666' }}>
+                              {ticket.phone}
+                            </td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <span style={{
+                                background: '#F3E8F7', color: '#782B90',
+                                padding: '3px 10px', borderRadius: 999,
+                                fontSize: 11, fontWeight: 600
+                              }}>{ticket.issue_category}</span>
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#555', maxWidth: 200 }}>
+                              <div style={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
                                 maxWidth: 180
-                              }}
-                              title={isExpanded ? '' : ticket.description}
-                            >
-                              {ticket.description}
-                              {!isExpanded && ticket.description.length > 40 &&
-                                <span style={{ color: '#782B90', fontSize: 11, marginLeft: 4 }}>
-                                  [+]
-                                </span>
-                              }
-                            </div>
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              background: sc.bg, color: sc.color,
-                              padding: '4px 10px', borderRadius: 999,
-                              fontSize: 11, fontWeight: 700
-                            }}>{sc.label}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: '#888', fontSize: 12, whiteSpace: 'nowrap' }}>
-                            {new Date(ticket.created_at).toLocaleDateString('en-IN', {
-                              day: 'numeric', month: 'short', year: 'numeric'
-                            })}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <select
-                              value={ticket.status}
-                              disabled={updating === ticket.id}
-                              onChange={e => updateStatus(ticket.id, e.target.value)}
-                              style={{
-                                padding: '6px 10px',
-                                border: '1.5px solid #e0c9ea',
-                                borderRadius: 8, fontSize: 12,
-                                outline: 'none', cursor: 'pointer',
-                                background: 'white', fontFamily: 'inherit',
-                                opacity: updating === ticket.id ? 0.5 : 1
-                              }}
-                            >
-                              <option value="Open">Open</option>
-                              <option value="InProgress">In Progress</option>
-                              <option value="Resolved">Resolved</option>
-                            </select>
-                          </td>
-                        </tr>
+                              }} title={ticket.description}>
+                                {ticket.description}
+                              </div>
+                            </td>
+                            {/* Status badge + dropdown combined */}
+                            <td style={{ padding: '10px 14px' }} onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <span style={{
+                                  background: sc.bg, color: sc.color,
+                                  padding: '4px 10px', borderRadius: 999,
+                                  fontSize: 11, fontWeight: 700,
+                                  textAlign: 'center', display: 'inline-block'
+                                }}>{sc.label}</span>
+                                <select
+                                  value={ticket.status}
+                                  disabled={updating === ticket.id}
+                                  onChange={e => updateStatus(ticket.id, e.target.value)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    border: '1.5px solid #e0c9ea',
+                                    borderRadius: 8, fontSize: 11,
+                                    outline: 'none', cursor: 'pointer',
+                                    background: 'white', fontFamily: 'inherit',
+                                    color: '#782B90', fontWeight: 600,
+                                    opacity: updating === ticket.id ? 0.5 : 1
+                                  }}
+                                >
+                                  <option value="Open">→ Set Open</option>
+                                  <option value="InProgress">→ Set In Progress</option>
+                                  <option value="Resolved">→ Set Resolved</option>
+                                </select>
+                              </div>
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#888', fontSize: 12, whiteSpace: 'nowrap' }}>
+                              {new Date(ticket.created_at).toLocaleDateString('en-IN', {
+                                day: 'numeric', month: 'short', year: 'numeric'
+                              })}
+                            </td>
+                          </tr>
+
+                          {/* Expandable timeline row */}
+                          {isExpanded && (
+                            <tr key={`${ticket.id}-expanded`} style={{ background: '#FDFBFF' }}>
+                              <td colSpan={7} style={{ padding: '0 24px 16px 24px' }}>
+                                {/* Full description */}
+                                <div style={{
+                                  background: '#F8F0FC', borderRadius: 12,
+                                  padding: '12px 16px', marginBottom: 12, marginTop: 4
+                                }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: '#782B90', marginBottom: 4 }}>
+                                    Full Description
+                                  </div>
+                                  <div style={{ fontSize: 13, color: '#444', lineHeight: 1.5 }}>
+                                    {ticket.description}
+                                  </div>
+                                </div>
+
+                                {/* Status timeline */}
+                                <StatusTimeline status={ticket.status} />
+
+                                {/* Metadata */}
+                                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 4 }}>
+                                  <span style={{ fontSize: 11, color: '#999' }}>
+                                    📅 Submitted: {new Date(ticket.created_at).toLocaleString('en-IN', {
+                                      day: 'numeric', month: 'short', year: 'numeric',
+                                      hour: '2-digit', minute: '2-digit'
+                                    })}
+                                  </span>
+                                  {ticket.email && (
+                                    <span style={{ fontSize: 11, color: '#999' }}>
+                                      📧 {ticket.email}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       )
                     })}
                   </tbody>

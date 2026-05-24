@@ -310,6 +310,24 @@ def seed_db():
             )
             db.add(offer)
 
+        # Flash sale offer expiring very soon (for countdown timer demo)
+        flash_sale = Offer(
+            title="⚡ Flash Sale — 50% Off Snacks",
+            description="Limited time flash sale on all snacks and namkeen! Grab them before they're gone!",
+            discount_type="percentage",
+            discount_value=50.0,
+            category="Groceries",
+            store_id=None,
+            store_name="All Stores",
+            valid_from=datetime.utcnow() - timedelta(hours=1),
+            valid_until=datetime.utcnow() + timedelta(hours=3),
+            image_url="https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=600&auto=format&fit=crop&q=60",
+            is_active=True,
+            min_purchase=0.0,
+            max_discount=200.0
+        )
+        db.add(flash_sale)
+
         # 4. Points Transactions (last 10 transactions for each user)
         # Create different transactions that sum up to user's current points balance
         # For simplicity, we create 10 transactions: some positive (earned), some negative (redeemed)
