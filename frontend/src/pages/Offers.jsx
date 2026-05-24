@@ -63,8 +63,10 @@ export const Offers = () => {
           getOffers(isNearMe ? "nearest_store_id" : null, selectedCategory), // Mocking nearest store ID
           getOfferCategories()
         ]);
-        setOffers(offersData);
-        setCategories(categoriesData.map(c => c.name));
+        const offersArr = Array.isArray(offersData) ? offersData : (offersData?.offers || []);
+        setOffers(offersArr);
+        const catsArr = Array.isArray(categoriesData) ? categoriesData : [];
+        setCategories(catsArr.map(c => c.name));
       } catch (err) {
         console.error("Error fetching offers", err);
         toast.error("Failed to load offers");

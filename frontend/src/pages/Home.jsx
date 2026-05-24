@@ -85,9 +85,14 @@ export const Home = () => {
         getOffers()
       ]);
       setStats(statsData);
-      setCoupons(couponsData.filter(c => !c.is_used));
-      setTransactions(pointsData);
-      setOffers(offersData.slice(0, 4)); // Show 4 offers max
+      // Defensive: ensure arrays before calling filter/slice
+      const couponsArr = Array.isArray(couponsData) ? couponsData : (couponsData?.coupons || []);
+      setCoupons(couponsArr.filter(c => !c.is_used));
+      // points-history returns a paginated object {transactions, total, page, pages}
+      const txArr = Array.isArray(pointsData) ? pointsData : (pointsData?.transactions || []);
+      setTransactions(txArr);
+      const offersArr = Array.isArray(offersData) ? offersData : (offersData?.offers || []);
+      setOffers(offersArr.slice(0, 4)); // Show 4 offers max
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
       toast.error("Error loading dashboard data.");

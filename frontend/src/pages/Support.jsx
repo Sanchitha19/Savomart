@@ -191,7 +191,7 @@ export const Support = () => {
     setIsTicketsLoading(true);
     try {
       const data = await getMySupportTickets();
-      setTickets(data);
+      setTickets(Array.isArray(data) ? data : (data?.tickets || []));
     } catch {
       /* silently fail */
     } finally {
