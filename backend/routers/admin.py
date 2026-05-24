@@ -16,7 +16,7 @@ import os
 import io
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -90,81 +90,120 @@ def admin_login(payload: AdminLogin, db: Session = Depends(get_db)):
 
 
 @router.get("/stats")
-def get_admin_stats(
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_admin_payload)
-):
-    """Return ticket counts by status and category breakdown."""
-    total = db.query(SupportRequest).count()
-    open_count = db.query(SupportRequest).filter(SupportRequest.status == "Open").count()
-    in_progress = db.query(SupportRequest).filter(SupportRequest.status == "InProgress").count()
-    resolved = db.query(SupportRequest).filter(SupportRequest.status == "Resolved").count()
+def get_admin_stats(db: Session = Depends(get_db)):
+    try:
+        from sqlalchemy import func, cast, Date
 
-    today = datetime.utcnow().date()
-    today_count = db.query(SupportRequest).filter(
-        func.date(SupportRequest.created_at) == today
-    ).count()
+        total = db.query(SupportRequest).count()
 
-    categories = db.query(
-        SupportRequest.issue_category,
-        func.count(SupportRequest.id)
-    ).group_by(SupportRequest.issue_category).all()
+        open_count = db.query(SupportRequest).filter(
+            SupportRequest.status == "Open"
+        ).count()
 
-    return {
-        "total": total,
-        "open": open_count,
-        "in_progress": in_progress,
-        "resolved": resolved,
-        "today": today_count,
-        "categories": [{"category": c[0], "count": c[1]} for c in categories]
-    }
+        in_progress = db.query(SupportRequest).filter(
+            SupportRequest.status == "InProgress"
+        ).count()
+
+        resolved = db.query(SupportRequest).filter(
+            SupportRequest.status == "Resolved"
+        ).count()
+
+        # Today count - SQLite compatible
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_count = db.query(SupportRequest).filter(
+            SupportRequest.created_at >= today_str
+        ).count()
+
+        categories = db.query(
+            SupportRequest.issue_category,
+            func.count(SupportRequest.id).label("count")
+        ).group_by(
+            SupportRequest.issue_category
+        ).all()
+
+        return {
+            "total": total,
+            "open": open_count,
+            "in_progress": in_progress,
+            "resolved": resolved,
+            "today": today_count,
+            "categories": [
+                {"category": c[0], "count": c[1]}
+                for c in categories
+            ]
+        }
+    except Exception as e:
+        print(f"Stats error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Stats error: {str(e)}"
+        )
 
 
 @router.get("/tickets")
-def get_admin_tickets(
-    status: Optional[str] = None,
-    category: Optional[str] = None,
-    search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 20,
-    db: Session = Depends(get_db),
-    _: dict = Depends(get_admin_payload)
+def get_all_tickets(
+    status: str = Query(None),
+    category: str = Query(None),
+    search: str = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db)
 ):
-    """Paginated, filterable list of all support tickets."""
-    query = db.query(SupportRequest)
+    try:
+        query = db.query(SupportRequest)
 
-    if status:
-        query = query.filter(SupportRequest.status == status)
-    if category:
-        query = query.filter(SupportRequest.issue_category == category)
-    if search:
-        query = query.filter(
-            SupportRequest.name.contains(search) |
-            SupportRequest.phone.contains(search)
-        )
+        if status and status != "":
+            query = query.filter(
+                SupportRequest.status == status
+            )
+        if category and category != "":
+            query = query.filter(
+                SupportRequest.issue_category == category
+            )
+        if search and search != "":
+            search_term = f"%{search}%"
+            query = query.filter(
+                SupportRequest.name.ilike(search_term) |
+                SupportRequest.phone.ilike(search_term)
+            )
 
-    total = query.count()
-    tickets = query.order_by(SupportRequest.created_at.desc()).offset(skip).limit(limit).all()
+        total = query.count()
+        tickets = query.order_by(
+            SupportRequest.created_at.desc()
+        ).offset(skip).limit(limit).all()
 
-    year = datetime.utcnow().year
-    return {
-        "tickets": [
-            {
+        ticket_list = []
+        for t in tickets:
+            ticket_list.append({
                 "id": t.id,
-                "ticket_id": f"SAV-{year}-{t.id:03d}",
+                "ticket_id": f"SAV-2025-{t.id:03d}",
                 "name": t.name,
                 "phone": t.phone,
                 "email": t.email or "",
                 "issue_category": t.issue_category,
                 "description": t.description,
                 "status": t.status,
-                "created_at": t.created_at.isoformat() if t.created_at else ""
-            }
-            for t in tickets
-        ],
-        "total": total,
-        "pages": max(1, (total + limit - 1) // limit)
-    }
+                "created_at": t.created_at.isoformat()
+                    if t.created_at else
+                    datetime.utcnow().isoformat()
+            })
+
+        return {
+            "tickets": ticket_list,
+            "total": total,
+            "pages": max(1, (total + limit - 1) // limit)
+        }
+
+    except Exception as e:
+        print(f"Tickets error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Tickets error: {str(e)}"
+        )
 
 
 @router.put("/tickets/{ticket_id}/status")

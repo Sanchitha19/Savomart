@@ -1,22 +1,52 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
-const ADMIN_API = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+const ADMIN_API = import.meta.env.VITE_API_URL
+  || 'http://localhost:8001'
 
-async function adminFetch(path, options = {}) {
-  const token = sessionStorage.getItem('admin_token')
-  console.log('Admin token:', token ? 'EXISTS' : 'MISSING')
-  
-  if (!token) {
-    window.location.href = '/admin/login'
-    return null
+export default function AdminDashboard() {
+  const navigate = useNavigate()
+  const [stats, setStats] = useState({
+    total: 0,
+    today: 0,
+    open: 0,
+    in_progress: 0,
+    resolved: 0,
+    categories: []
+  })
+  const [tickets, setTickets] = useState([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [updating, setUpdating] = useState(null)
+  const [expandedRow, setExpandedRow] = useState(null)
+  const LIMIT = 20
+
+  const admin = (() => {
+    try {
+      return JSON.parse(
+        sessionStorage.getItem('admin_user') || '{}'
+      )
+    } catch { return {} }
+  })()
+
+  const getToken = () => {
+    return sessionStorage.getItem('admin_token')
   }
 
-  const url = `${ADMIN_API}${path}`
-  console.log('Fetching:', url)
+  const adminFetch = async (path, options = {}) => {
+    const token = getToken()
+    if (!token) {
+      navigate('/admin/login')
+      return null
+    }
 
-  try {
+    const url = `${ADMIN_API}${path}`
     const res = await fetch(url, {
       ...options,
       headers: {
@@ -26,626 +56,615 @@ async function adminFetch(path, options = {}) {
       }
     })
 
-    console.log('Response status:', res.status)
-
     if (res.status === 401) {
-      sessionStorage.removeItem('admin_token')
-      window.location.href = '/admin/login'
+      sessionStorage.clear()
+      navigate('/admin/login')
       return null
     }
 
-    const data = await res.json()
-    console.log('Response data:', data)
-    return data
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`${res.status}: ${text}`)
+    }
 
-  } catch (err) {
-    console.error('Fetch error:', err)
-    throw err
+    return res.json()
   }
-}
 
-const STATUS_CONFIG = {
-  Open:       { color: '#DC2626', bg: '#FEF2F2', label: 'Open' },
-  InProgress: { color: '#D97706', bg: '#FFFBEB', label: 'In Progress' },
-  Resolved:   { color: '#16A34A', bg: '#F0FDF4', label: 'Resolved' }
-}
-
-const STAT_CARDS = [
-  { key: 'total',       label: 'Total',       color: '#782B90', emoji: '🎫' },
-  { key: 'today',       label: 'Today',       color: '#2563EB', emoji: '📅' },
-  { key: 'open',        label: 'Open',        color: '#DC2626', emoji: '🔴' },
-  { key: 'in_progress', label: 'In Progress', color: '#D97706', emoji: '🟡' },
-  { key: 'resolved',    label: 'Resolved',    color: '#16A34A', emoji: '✅' }
-]
-
-export default function AdminDashboard() {
-  const navigate = useNavigate()
-  const [stats, setStats]           = useState(null)
-  const [tickets, setTickets]       = useState([])
-  const [total, setTotal]           = useState(0)
-  const [loading, setLoading]       = useState(true)
-  const [statusFilter, setStatus]   = useState('')
-  const [categoryFilter, setCategory] = useState('')
-  const [search, setSearch]         = useState('')
-  const [searchInput, setSearchInput] = useState('')
-  const [page, setPage]             = useState(1)
-  const [updating, setUpdating]     = useState(null)
-  const [expandedRow, setExpandedRow] = useState(null)
-
-  const admin = (() => {
-    try { return JSON.parse(sessionStorage.getItem('admin_user') || '{}') }
-    catch { return {} }
-  })()
-
-  const PER_PAGE = 20
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE))
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  const fetchStats = async () => {
     try {
-      const qs = new URLSearchParams({
-        skip: String((page - 1) * PER_PAGE),
-        limit: String(PER_PAGE),
-        ...(statusFilter   ? { status: statusFilter }     : {}),
-        ...(categoryFilter ? { category: categoryFilter } : {}),
-        ...(search         ? { search }                   : {})
+      const data = await adminFetch('/api/admin/stats')
+      if (data) setStats(data)
+    } catch (err) {
+      console.error('Stats error:', err)
+    }
+  }
+
+  const fetchTickets = async () => {
+    try {
+      const params = new URLSearchParams({
+        skip: ((page - 1) * LIMIT).toString(),
+        limit: LIMIT.toString(),
       })
-      const [statsData, ticketsData] = await Promise.all([
-        adminFetch('/api/admin/stats'),
-        adminFetch(`/api/admin/tickets?${qs}`)
-      ])
-      if (statsData)   setStats(statsData)
-      if (ticketsData) {
-        setTickets(Array.isArray(ticketsData.tickets) ? ticketsData.tickets : [])
-        setTotal(ticketsData.total || 0)
+      if (statusFilter) params.append('status', statusFilter)
+      if (categoryFilter) params.append('category', categoryFilter)
+      if (search) params.append('search', search)
+
+      const data = await adminFetch(
+        `/api/admin/tickets?${params.toString()}`
+      )
+      if (data) {
+        setTickets(data.tickets || [])
+        setTotal(data.total || 0)
       }
-    } catch {
-      toast.error('Failed to load data')
+    } catch (err) {
+      console.error('Tickets error:', err)
+      setError(err.message)
+    }
+  }
+
+  const fetchAll = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await Promise.all([fetchStats(), fetchTickets()])
+    } catch (err) {
+      setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [page, statusFilter, categoryFilter, search])
+  }
 
   useEffect(() => {
-    if (!sessionStorage.getItem('admin_token')) {
+    if (!getToken()) {
       navigate('/admin/login')
       return
     }
-    fetchData()
-  }, [fetchData, navigate])
+    fetchAll()
+  }, [page, statusFilter, categoryFilter])
+
+  const handleSearch = () => {
+    setPage(1)
+    fetchAll()
+  }
+
+  const handleClear = () => {
+    setSearch('')
+    setStatusFilter('')
+    setCategoryFilter('')
+    setPage(1)
+  }
 
   const updateStatus = async (ticketId, newStatus) => {
     setUpdating(ticketId)
     try {
-      await adminFetch(`/api/admin/tickets/${ticketId}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus })
-      })
-      toast.success('Status updated')
-      fetchData()
-    } catch {
-      toast.error('Failed to update status')
+      await adminFetch(
+        `/api/admin/tickets/${ticketId}/status`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ status: newStatus })
+        }
+      )
+      toast.success('Status updated!')
+      fetchAll()
+    } catch (err) {
+      toast.error('Failed to update: ' + err.message)
     } finally {
       setUpdating(null)
     }
   }
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('admin_token')
-    sessionStorage.removeItem('admin_user')
-    navigate('/admin/login')
-  }
-
-  const handleSearchSubmit = (e) => {
-    e.preventDefault()
-    setSearch(searchInput)
-    setPage(1)
-  }
-
-  const clearFilters = () => {
-    setStatus('')
-    setCategory('')
-    setSearch('')
-    setSearchInput('')
-    setPage(1)
-  }
-
   const downloadExcel = async () => {
     try {
-      const token = sessionStorage.getItem('admin_token')
-      const res = await fetch(`${ADMIN_API}/api/admin/download-excel`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      if (!res.ok) {
-        toast.error('Download failed — try again')
-        return
-      }
+      const token = getToken()
+      const res = await fetch(
+        `${ADMIN_API}/api/admin/download-excel`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
+      if (!res.ok) throw new Error('Download failed')
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `savomart_support_${new Date().toISOString().slice(0,10)}.xlsx`
+      a.download = 'savomart_tickets.xlsx'
       document.body.appendChild(a)
       a.click()
+      a.remove()
       window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      toast.success('Excel downloaded!')
-    } catch (e) {
-      console.error('Download error:', e)
-      toast.error('Download failed — try again')
+      toast.success('Downloaded!')
+    } catch (err) {
+      toast.error('Download failed')
     }
   }
 
-  const s = (style) => style  // identity helper for readability
+  const handleLogout = () => {
+    sessionStorage.clear()
+    navigate('/admin/login')
+  }
+
+  const statusStyle = (status) => {
+    const styles = {
+      Open: { bg: '#FFEBEE', color: '#C62828',
+              dot: '#EF4444', label: '🔴 Open' },
+      InProgress: { bg: '#FFFDE7', color: '#F57F17',
+                    dot: '#F59E0B', label: '🟡 In Progress' },
+      Resolved: { bg: '#E8F5E9', color: '#2E7D32',
+                  dot: '#22C55E', label: '🟢 Resolved' }
+    }
+    return styles[status] || styles.Open
+  }
+
+  const StatusTimeline = ({ status }) => {
+    const steps = [
+      { key: 'Open', label: 'Open', color: '#EF4444' },
+      { key: 'InProgress', label: 'In Progress',
+        color: '#F59E0B' },
+      { key: 'Resolved', label: 'Resolved',
+        color: '#22C55E' },
+    ]
+    const currentIndex = steps.findIndex(
+      s => s.key === status
+    )
+
+    return (
+      <div className="flex items-center gap-2 py-3 px-4
+                      bg-gray-50 rounded-xl mt-2">
+        {steps.map((step, i) => (
+          <div key={step.key}
+               className="flex items-center flex-1">
+            <div className="flex flex-col items-center">
+              <div
+                className="w-8 h-8 rounded-full flex
+                           items-center justify-center
+                           text-white text-xs font-bold
+                           transition-all"
+                style={{
+                  background: i <= currentIndex
+                    ? step.color : '#E0E0E0',
+                  transform: i === currentIndex
+                    ? 'scale(1.2)' : 'scale(1)'
+                }}>
+                {i < currentIndex ? '✓' : i + 1}
+              </div>
+              <span className="text-xs mt-1 font-medium"
+                    style={{
+                      color: i <= currentIndex
+                        ? step.color : '#9E9E9E'
+                    }}>
+                {step.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div
+                className="flex-1 h-1 rounded mx-2
+                           transition-all"
+                style={{
+                  background: i < currentIndex
+                    ? '#782B90' : '#E0E0E0'
+                }} />
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const statCards = [
+    { label: 'Total', value: stats.total,
+      color: '#782B90', icon: '🎫' },
+    { label: 'Today', value: stats.today,
+      color: '#3B82F6', icon: '📅' },
+    { label: 'Open', value: stats.open,
+      color: '#EF4444', icon: '🔴' },
+    { label: 'In Progress', value: stats.in_progress,
+      color: '#F59E0B', icon: '🟡' },
+    { label: 'Resolved', value: stats.resolved,
+      color: '#22C55E', icon: '🟢' },
+  ]
 
   return (
-    <div id="admin-dashboard" style={{
-      minHeight: '100vh',
-      background: '#F5F0F8',
-      fontFamily: "'Inter', 'Segoe UI', sans-serif",
-      color: '#1a1a2e'
-    }}>
-      {/* ── TOP NAV ─────────────────────────────────────────────────────── */}
-      <nav style={{
-        background: 'linear-gradient(135deg, #4A1A5C, #782B90)',
-        padding: '0 1.5rem',
-        height: 64,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        boxShadow: '0 4px 24px rgba(78,27,144,0.3)',
-        position: 'sticky', top: 0, zIndex: 100
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            background: '#FFF200', color: '#782B90',
-            width: 36, height: 36, borderRadius: 10,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 900, fontSize: 18
-          }}>S</div>
+    <div className="min-h-screen"
+         style={{ background: '#F8F4FA' }}>
+
+      {/* NAVBAR */}
+      <div className="px-6 py-4 flex justify-between
+                      items-center shadow-md sticky top-0 z-40"
+           style={{ background: '#782B90' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex
+                          items-center justify-center
+                          font-bold text-lg"
+               style={{ background: '#FFF200',
+                        color: '#782B90' }}>
+            S
+          </div>
           <div>
-            <div style={{ color: 'white', fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>
+            <h1 className="text-white font-bold text-lg">
               SAVOmart Admin
-            </div>
-            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>
+            </h1>
+            <p className="text-white/60 text-xs">
               Support Dashboard
-            </div>
+            </p>
           </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, display: 'none' }}
-                className="md-show">
+        <div className="flex items-center gap-3">
+          <span className="text-white/70 text-sm
+                           hidden md:block">
             {admin.name || 'Admin'}
           </span>
           <button
-            id="admin-download-excel"
             onClick={downloadExcel}
-            style={{
-              background: '#FFF200', color: '#782B90',
-              border: 'none', borderRadius: 10,
-              padding: '8px 16px', fontWeight: 700, fontSize: 13,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
-            }}
-          >⬇ Excel</button>
+            className="px-4 py-2 rounded-xl text-sm
+                       font-bold flex items-center gap-2"
+            style={{ background: '#FFF200',
+                     color: '#782B90' }}>
+            ⬇ Excel
+          </button>
           <button
-            id="admin-logout"
             onClick={handleLogout}
-            style={{
-              background: 'rgba(255,255,255,0.12)',
-              color: 'white', border: '1px solid rgba(255,255,255,0.25)',
-              borderRadius: 10, padding: '8px 16px',
-              fontWeight: 600, fontSize: 13, cursor: 'pointer'
-            }}
-          >Logout</button>
+            className="px-4 py-2 rounded-xl text-sm
+                       border border-white/30 text-white">
+            Logout
+          </button>
         </div>
-      </nav>
+      </div>
 
-      <div style={{ padding: '1.5rem', maxWidth: 1200, margin: '0 auto' }}>
+      <div className="p-4 md:p-6 max-w-7xl mx-auto">
 
-        {/* ── STATS ──────────────────────────────────────────────────────── */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 12, marginBottom: 20
-        }}>
-          {STAT_CARDS.map(card => (
-            <div key={card.key} style={{
-              background: 'white', borderRadius: 16,
-              padding: '1rem', textAlign: 'center',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-              borderTop: `3px solid ${card.color}`
-            }}>
-              <div style={{ fontSize: 24, marginBottom: 4 }}>{card.emoji}</div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: card.color, lineHeight: 1 }}>
-                {stats ? stats[card.key] : '—'}
+        {/* ERROR BANNER */}
+        {error && (
+          <div className="mb-4 p-4 rounded-xl
+                          flex items-center
+                          justify-between"
+               style={{ background: '#FFEBEE',
+                        border: '1px solid #EF4444' }}>
+            <p className="text-sm"
+               style={{ color: '#C62828' }}>
+              ⚠️ {error}
+            </p>
+            <button
+              onClick={fetchAll}
+              className="px-3 py-1 rounded-lg text-xs
+                         text-white ml-4"
+              style={{ background: '#EF4444' }}>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* STAT CARDS */}
+        <div className="grid grid-cols-2 md:grid-cols-5
+                        gap-3 mb-6">
+          {statCards.map((card, i) => (
+            <div key={i}
+                 className="bg-white rounded-2xl p-4
+                            shadow-sm text-center border-t-4"
+                 style={{ borderColor: card.color }}>
+              <div className="text-3xl mb-1">
+                {card.icon}
               </div>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 4, fontWeight: 600 }}>
+              <p className="text-3xl font-black"
+                 style={{ color: card.color }}>
+                {loading ? '—' : card.value}
+              </p>
+              <p className="text-xs text-gray-500 mt-1
+                            font-medium">
                 {card.label}
-              </div>
+              </p>
             </div>
           ))}
         </div>
 
-        {/* ── CATEGORY CHIPS ─────────────────────────────────────────────── */}
-        {stats?.categories?.length > 0 && (
-          <div style={{
-            background: 'white', borderRadius: 16,
-            padding: '1rem 1.25rem', marginBottom: 16,
-            boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#782B90', marginBottom: 10 }}>
+        {/* CATEGORY PILLS */}
+        {stats.categories.length > 0 && (
+          <div className="bg-white rounded-2xl p-4
+                          shadow-sm mb-4">
+            <p className="text-sm font-bold mb-3"
+               style={{ color: '#782B90' }}>
               Issues by Category
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            </p>
+            <div className="flex flex-wrap gap-2">
               {stats.categories.map((cat, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setCategory(cat.category === categoryFilter ? '' : cat.category); setPage(1) }}
-                  style={{
-                    background: cat.category === categoryFilter ? '#782B90' : '#F3E8F7',
-                    color: cat.category === categoryFilter ? 'white' : '#782B90',
-                    border: 'none', borderRadius: 999,
-                    padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                    cursor: 'pointer', transition: 'all 0.15s'
-                  }}
-                >
-                  {cat.category} · {cat.count}
-                </button>
+                <span key={i}
+                      className="px-3 py-1 rounded-full
+                                 text-xs font-medium
+                                 cursor-pointer"
+                      onClick={() => {
+                        setCategoryFilter(cat.category)
+                        setPage(1)
+                      }}
+                      style={{ background: '#F3E8F7',
+                               color: '#782B90' }}>
+                  {cat.category}: {cat.count}
+                </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* ── FILTERS ────────────────────────────────────────────────────── */}
-        <div style={{
-          background: 'white', borderRadius: 16,
-          padding: '1rem 1.25rem', marginBottom: 16,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-        }}>
-          <form onSubmit={handleSearchSubmit}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+        {/* SEARCH + FILTERS */}
+        <div className="bg-white rounded-2xl p-4
+                        shadow-sm mb-4">
+          <div className="flex flex-wrap gap-3">
             <input
-              id="admin-search"
               type="text"
-              placeholder="Search name or phone…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              style={{
-                flex: '1 1 180px', padding: '9px 14px',
-                border: '1.5px solid #e0c9ea', borderRadius: 10,
-                fontSize: 13, outline: 'none', fontFamily: 'inherit'
-              }}
+              placeholder="Search name or phone..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' &&
+                handleSearch()}
+              className="px-4 py-2 border rounded-xl
+                         text-sm flex-1 min-w-48
+                         focus:outline-none"
+              style={{ borderColor: '#782B90' + '40' }}
             />
             <select
-              id="admin-filter-status"
               value={statusFilter}
-              onChange={e => { setStatus(e.target.value); setPage(1) }}
-              style={{
-                padding: '9px 14px', border: '1.5px solid #e0c9ea',
-                borderRadius: 10, fontSize: 13, outline: 'none',
-                background: 'white', fontFamily: 'inherit', cursor: 'pointer'
+              onChange={e => {
+                setStatusFilter(e.target.value)
+                setPage(1)
               }}
-            >
+              className="px-4 py-2 border rounded-xl
+                         text-sm focus:outline-none"
+              style={{ borderColor: '#782B90' + '40' }}>
               <option value="">All Statuses</option>
               <option value="Open">Open</option>
               <option value="InProgress">In Progress</option>
               <option value="Resolved">Resolved</option>
             </select>
             <select
-              id="admin-filter-category"
               value={categoryFilter}
-              onChange={e => { setCategory(e.target.value); setPage(1) }}
-              style={{
-                padding: '9px 14px', border: '1.5px solid #e0c9ea',
-                borderRadius: 10, fontSize: 13, outline: 'none',
-                background: 'white', fontFamily: 'inherit', cursor: 'pointer'
+              onChange={e => {
+                setCategoryFilter(e.target.value)
+                setPage(1)
               }}
-            >
+              className="px-4 py-2 border rounded-xl
+                         text-sm focus:outline-none"
+              style={{ borderColor: '#782B90' + '40' }}>
               <option value="">All Categories</option>
-              <option value="Points Issue">Points Issue</option>
-              <option value="Coupon Issue">Coupon Issue</option>
-              <option value="Store Issue">Store Issue</option>
+              <option value="Points Issue">
+                Points Issue
+              </option>
+              <option value="Coupon Issue">
+                Coupon Issue
+              </option>
+              <option value="Store Issue">
+                Store Issue
+              </option>
               <option value="App Issue">App Issue</option>
               <option value="Other">Other</option>
             </select>
-            <button type="submit" style={{
-              background: '#782B90', color: 'white',
-              border: 'none', borderRadius: 10,
-              padding: '9px 18px', fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'inherit'
-            }}>Search</button>
-            <button type="button" onClick={clearFilters} style={{
-              background: 'white', color: '#782B90',
-              border: '1.5px solid #e0c9ea', borderRadius: 10,
-              padding: '9px 14px', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'inherit'
-            }}>Clear</button>
-          </form>
+            <button
+              onClick={handleSearch}
+              className="px-4 py-2 rounded-xl text-sm
+                         font-bold text-white"
+              style={{ background: '#782B90' }}>
+              Search
+            </button>
+            <button
+              onClick={handleClear}
+              className="px-4 py-2 rounded-xl text-sm
+                         border font-medium"
+              style={{ color: '#782B90',
+                       borderColor: '#782B90' }}>
+              Clear
+            </button>
+          </div>
         </div>
 
-        {/* ── TICKETS ────────────────────────────────────────────────────── */}
-        <div style={{
-          background: 'white', borderRadius: 16,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)', overflow: 'hidden'
-        }}>
-          {/* Header */}
-          <div style={{
-            padding: '1rem 1.25rem',
-            borderBottom: '1px solid #F0E6F6',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-          }}>
-            <span style={{ fontWeight: 800, color: '#782B90', fontSize: 15 }}>
+        {/* TICKETS */}
+        <div className="bg-white rounded-2xl shadow-sm
+                        overflow-hidden">
+          <div className="px-4 py-3 border-b flex
+                          justify-between items-center">
+            <h3 className="font-bold"
+                style={{ color: '#782B90' }}>
               Support Tickets ({total})
-            </span>
-            <span style={{ fontSize: 12, color: '#999', fontWeight: 600 }}>
-              Page {page} of {totalPages}
-            </span>
+            </h3>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-400">
+                Page {page} of {Math.ceil(total/LIMIT)||1}
+              </span>
+              <button
+                onClick={fetchAll}
+                className="text-sm px-3 py-1 rounded-lg"
+                style={{ background: '#F3E8F7',
+                         color: '#782B90' }}>
+                ↻ Refresh
+              </button>
+            </div>
           </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '4rem' }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                border: '3px solid #e0c9ea',
-                borderTop: '3px solid #782B90',
-                animation: 'spin 0.8s linear infinite',
-                margin: '0 auto'
-              }} />
-              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+            <div className="text-center py-16">
+              <div className="w-10 h-10 border-4 rounded-full
+                              animate-spin mx-auto"
+                   style={{ borderColor: '#782B90',
+                            borderTopColor: 'transparent'}} />
+              <p className="text-gray-400 mt-3 text-sm">
+                Loading tickets...
+              </p>
             </div>
           ) : tickets.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '4rem', color: '#999' }}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>🎫</div>
-              <div style={{ fontWeight: 600 }}>No tickets found</div>
+            <div className="text-center py-16">
+              <p className="text-5xl mb-3">🎫</p>
+              <p className="text-gray-500 font-medium">
+                No tickets found
+              </p>
+              <p className="text-gray-400 text-sm mt-1">
+                Submit a support request from the
+                customer app to see it here
+              </p>
+              <button
+                onClick={fetchAll}
+                className="mt-4 px-6 py-2 rounded-xl
+                           text-sm font-medium text-white"
+                style={{ background: '#782B90' }}>
+                Refresh
+              </button>
             </div>
           ) : (
-            <>
-              {/* Desktop table */}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: '#F8F0FC' }}>
-                      {['Ticket ID','Name','Phone','Category','Description','Status','Date','Action'].map(h => (
-                        <th key={h} style={{
-                          padding: '10px 14px', textAlign: 'left',
-                          fontWeight: 700, color: '#782B90',
-                          fontSize: 12, whiteSpace: 'nowrap'
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tickets.map((ticket, idx) => {
-                      const sc = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.Open
-                      const isExpanded = expandedId === ticket.id
-                      return (
-                        <>
-                          <tr key={ticket.id} 
-                            onClick={() => setExpandedRow(
-                              expandedRow === ticket.id ? null : ticket.id
-                            )}
-                            style={{
-                              borderTop: '1px solid #F5F0F8',
-                              background: idx % 2 === 0 ? 'white' : '#FDFBFF',
-                              transition: 'background 0.15s',
-                              cursor: 'pointer'
-                            }}>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              fontFamily: 'monospace', fontWeight: 700,
-                              fontSize: 12, color: '#782B90'
-                            }}>{ticket.ticket_id}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>
-                            {ticket.name}
-                          </td>
-                          <td style={{ padding: '10px 14px', color: '#666' }}>
-                            {ticket.phone}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <span style={{
-                              background: '#F3E8F7', color: '#782B90',
-                              padding: '3px 10px', borderRadius: 999,
-                              fontSize: 11, fontWeight: 600
-                            }}>{ticket.issue_category}</span>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: '#555', maxWidth: 200 }}>
-                            <div
-                              onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
-                              style={{
-                                cursor: 'pointer',
-                                overflow: isExpanded ? 'visible' : 'hidden',
-                                textOverflow: isExpanded ? 'unset' : 'ellipsis',
-                                whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                                maxWidth: 180
-                              }}
-                              title={isExpanded ? '' : ticket.description}
-                            >
-                              {ticket.description}
-                              {!isExpanded && ticket.description.length > 40 &&
-                                <span style={{ color: '#782B90', fontSize: 11, marginLeft: 4 }}>
-                                  [+]
-                                </span>
-                              }
-                            </div>
-                          </td>
-                          {/* STATUS BADGE + DROPDOWN COMBINED */}
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-2">
-                              
-                              {/* Current status badge */}
-                              <span 
-                                className="px-3 py-1 rounded-full text-xs 
-                                           font-bold text-center"
-                                style={{
-                                  background: 
-                                    ticket.status === 'Open' ? '#FFEBEE' :
-                                    ticket.status === 'InProgress' ? '#FFFDE7' :
-                                    '#E8F5E9',
-                                  color:
-                                    ticket.status === 'Open' ? '#C62828' :
-                                    ticket.status === 'InProgress' ? '#F57F17' :
-                                    '#2E7D32'
-                                }}>
-                                {ticket.status === 'Open' && '🔴 Open'}
-                                {ticket.status === 'InProgress' && '🟡 In Progress'}
-                                {ticket.status === 'Resolved' && '🟢 Resolved'}
-                              </span>
+            <div className="divide-y">
+              {tickets.map(ticket => {
+                const ss = statusStyle(ticket.status)
+                const isExpanded =
+                  expandedRow === ticket.id
 
-                              {/* Change status dropdown */}
-                              <select
-                                value={ticket.status}
-                                onChange={e => updateStatus(ticket.id, e.target.value)}
-                                disabled={updating === ticket.id}
-                                className="text-xs px-2 py-1 border rounded-lg
-                                           focus:outline-none disabled:opacity-50
-                                           cursor-pointer"
-                                style={{ 
-                                  borderColor: '#782B90' + '40',
-                                  color: '#782B90'
-                                }}>
-                                <option value="Open">→ Set Open</option>
-                                <option value="InProgress">→ Set In Progress</option>
-                                <option value="Resolved">→ Set Resolved</option>
-                              </select>
-                            </div>
-                          </td>
-                        </tr>
-                        {expandedRow === ticket.id && (
-                        <tr>
-                          <td colSpan={8} className="px-4 pb-4">
-                            <div className="flex items-center gap-2 mt-2">
-                              
-                              {/* Step 1 - Open */}
-                              <div className="flex flex-col items-center">
-                                <div className="w-8 h-8 rounded-full flex items-center
-                                                justify-center text-xs font-bold"
-                                     style={{
-                                       background: '#EF4444',
-                                       color: 'white'
-                                     }}>
-                                  1
-                                </div>
-                                <span className="text-xs mt-1 text-gray-500">
-                                  Open
-                                </span>
-                              </div>
+                return (
+                  <div key={ticket.id}>
 
-                              {/* Line */}
-                              <div className="flex-1 h-1 rounded"
-                                   style={{
-                                     background: 
-                                       ticket.status === 'InProgress' ||
-                                       ticket.status === 'Resolved'
-                                       ? '#782B90' : '#E0E0E0'
-                                   }} />
+                    {/* TICKET ROW */}
+                    <div
+                      className="p-4 hover:bg-gray-50
+                                 cursor-pointer transition-colors"
+                      onClick={() => setExpandedRow(
+                        isExpanded ? null : ticket.id
+                      )}>
 
-                              {/* Step 2 - In Progress */}
-                              <div className="flex flex-col items-center">
-                                <div className="w-8 h-8 rounded-full flex items-center
-                                                justify-center text-xs font-bold"
-                                     style={{
-                                       background: 
-                                         ticket.status === 'InProgress' ||
-                                         ticket.status === 'Resolved'
-                                         ? '#F59E0B' : '#E0E0E0',
-                                       color: 'white'
-                                     }}>
-                                  2
-                                </div>
-                                <span className="text-xs mt-1 text-gray-500">
-                                  In Progress
-                                </span>
-                              </div>
+                      <div className="flex items-start
+                                      justify-between gap-4">
 
-                              {/* Line */}
-                              <div className="flex-1 h-1 rounded"
-                                   style={{
-                                     background:
-                                       ticket.status === 'Resolved'
-                                       ? '#782B90' : '#E0E0E0'
-                                   }} />
+                        {/* Left: ticket info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center
+                                          gap-2 mb-1 flex-wrap">
+                            <span className="font-mono
+                                             font-bold text-sm"
+                                  style={{ color: '#782B90' }}>
+                              {ticket.ticket_id}
+                            </span>
+                            {/* STATUS BADGE */}
+                            <span
+                              className="px-2 py-0.5 rounded-full
+                                         text-xs font-bold"
+                              style={{ background: ss.bg,
+                                       color: ss.color }}>
+                              {ss.label}
+                            </span>
+                            <span className="px-2 py-0.5
+                                             rounded-full
+                                             text-xs"
+                                  style={{ background: '#F3E8F7',
+                                           color: '#782B90' }}>
+                              {ticket.issue_category}
+                            </span>
+                          </div>
 
-                              {/* Step 3 - Resolved */}
-                              <div className="flex flex-col items-center">
-                                <div className="w-8 h-8 rounded-full flex items-center
-                                                justify-center text-xs font-bold"
-                                     style={{
-                                       background:
-                                         ticket.status === 'Resolved'
-                                         ? '#22C55E' : '#E0E0E0',
-                                       color: 'white'
-                                     }}>
-                                  3
-                                </div>
-                                <span className="text-xs mt-1 text-gray-500">
-                                  Resolved
-                                </span>
-                              </div>
-
-                            </div>
-
-                            {/* Submitted date */}
-                            <p className="text-xs text-gray-400 mt-2">
-                              Submitted: {new Date(ticket.created_at)
-                                .toLocaleString('en-IN', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
+                          <div className="flex items-center
+                                          gap-3 mb-2">
+                            <p className="font-bold text-gray-800">
+                              {ticket.name}
                             </p>
-                          </td>
-                        </tr>
+                            <p className="text-sm text-gray-500">
+                              📱 {ticket.phone}
+                            </p>
+                          </div>
+
+                          <p className="text-sm text-gray-600
+                                        line-clamp-2">
+                            {ticket.description}
+                          </p>
+
+                          <p className="text-xs text-gray-400 mt-1">
+                            {new Date(ticket.created_at)
+                              .toLocaleString('en-IN', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                          </p>
+                        </div>
+
+                        {/* Right: status change */}
+                        <div className="flex flex-col
+                                        items-end gap-2
+                                        flex-shrink-0"
+                             onClick={e => e.stopPropagation()}>
+                          <select
+                            value={ticket.status}
+                            onChange={e => updateStatus(
+                              ticket.id, e.target.value
+                            )}
+                            disabled={updating === ticket.id}
+                            className="text-xs px-2 py-1 border
+                                       rounded-lg focus:outline-none
+                                       disabled:opacity-50
+                                       cursor-pointer"
+                            style={{ borderColor: ss.dot,
+                                     color: ss.color }}>
+                            <option value="Open">
+                              Set Open
+                            </option>
+                            <option value="InProgress">
+                              Set In Progress
+                            </option>
+                            <option value="Resolved">
+                              Set Resolved
+                            </option>
+                          </select>
+                          <span className="text-xs text-gray-400">
+                            {isExpanded ? '▲ less' : '▼ details'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* EXPANDED — STATUS TIMELINE */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 bg-gray-50
+                                      border-t">
+                        <p className="text-xs font-bold
+                                      text-gray-500 mt-3 mb-2
+                                      uppercase tracking-wide">
+                          Ticket Progress
+                        </p>
+                        <StatusTimeline
+                          status={ticket.status}
+                        />
+                        {ticket.email && (
+                          <p className="text-xs text-gray-400
+                                        mt-2">
+                            📧 {ticket.email}
+                          </p>
                         )}
-                        </>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           )}
 
-          {/* ── PAGINATION ─────────────────────────────────────────────── */}
-          {total > PER_PAGE && (
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 16px', borderTop: '1px solid #F0E6F6'
-            }}>
+          {/* PAGINATION */}
+          {total > LIMIT && (
+            <div className="flex justify-between items-center
+                            px-4 py-3 border-t">
               <button
-                id="admin-prev-page"
                 onClick={() => setPage(p => p - 1)}
                 disabled={page === 1}
-                style={{
-                  background: '#F3E8F7', color: '#782B90',
-                  border: 'none', borderRadius: 10,
-                  padding: '8px 16px', fontSize: 13, fontWeight: 600,
-                  cursor: page === 1 ? 'not-allowed' : 'pointer',
-                  opacity: page === 1 ? 0.4 : 1
-                }}
-              >← Previous</button>
-              <span style={{ fontSize: 12, color: '#888', fontWeight: 600 }}>
-                {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, total)} of {total}
+                className="px-4 py-2 rounded-xl text-sm
+                           font-medium disabled:opacity-40"
+                style={{ background: '#F3E8F7',
+                         color: '#782B90' }}>
+                ← Previous
+              </button>
+              <span className="text-sm text-gray-500">
+                {(page-1)*LIMIT+1}–
+                {Math.min(page*LIMIT, total)} of {total}
               </span>
               <button
-                id="admin-next-page"
                 onClick={() => setPage(p => p + 1)}
-                disabled={page >= totalPages}
-                style={{
-                  background: '#782B90', color: 'white',
-                  border: 'none', borderRadius: 10,
-                  padding: '8px 16px', fontSize: 13, fontWeight: 600,
-                  cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                  opacity: page >= totalPages ? 0.4 : 1
-                }}
-              >Next →</button>
+                disabled={page * LIMIT >= total}
+                className="px-4 py-2 rounded-xl text-sm
+                           font-medium disabled:opacity-40
+                           text-white"
+                style={{ background: '#782B90' }}>
+                Next →
+              </button>
             </div>
           )}
         </div>
-
       </div>
     </div>
   )
